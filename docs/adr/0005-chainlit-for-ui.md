@@ -1,0 +1,3 @@
+# Chainlit as the UI framework
+
+We use Chainlit for the chat interface. It provides streaming, source citations (clickable), file upload, and conversation UI out of the box — all features we need — without requiring frontend development. We chose it over Streamlit/Gradio (less specialized for LLM apps, weaker citation support) and over FastAPI+React (excessive effort for a personal tool where UI customization is not a priority).

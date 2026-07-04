@@ -1,0 +1,3 @@
+# Parent-child chunking for retrieval
+
+Documents are chunked at two levels: small Child Chunks (~200 tokens) for precise embedding search, linked to larger Parent Chunks (~1000 tokens) that provide generation context. Search matches a Child Chunk, but the LLM receives its Parent Chunk. This resolves the conflict between search precision (small chunks embed better) and generation quality (LLM needs surrounding context). Especially important for code (a 200-token snippet is meaningless without the enclosing function) and PDF (paragraphs reference prior content).

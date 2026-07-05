@@ -3,7 +3,7 @@ import json
 import os
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, List
 
 from dotenv import load_dotenv
 
@@ -158,19 +158,19 @@ async def on_chat_start() -> None:
     cl.user_session.set("thread_id", thread_id)
 
     # Register settings panel
-    settings = await cl.ChatSettings(
-        [
+    inputs: List[cl.input_widget.InputWidget] = [
             cl.input_widget.TextInput(
                 id="system_prompt",
                 label="System Prompt",
                 initial=_config.get("system_prompt", "You are a helpful assistant."),
             ),
-            cl.input_widget.NumberInput(
+            cl.input_widget.Slider(
                 id="inactivity_timeout",
                 label="Inactivity Timeout (minutes)",
                 initial=_config.get("inactivity_timeout", 30),
                 min=1,
                 max=180,
+                step=1,
             ),
             cl.input_widget.Select(
                 id="profile",
@@ -178,19 +178,21 @@ async def on_chat_start() -> None:
                 values=profiles,
                 initial_value=active,
             ),
-            cl.input_widget.NumberInput(
+            cl.input_widget.Slider(
                 id="top_k",
                 label="Top-K Retrieval",
                 initial=_config["retrieval"]["top_k"],
                 min=1,
                 max=50,
+                step=1,
             ),
-            cl.input_widget.NumberInput(
+            cl.input_widget.Slider(
                 id="rerank_top_n",
                 label="Rerank Top-N",
                 initial=_config.get("reranker", {}).get("top_n", 5),
                 min=1,
                 max=20,
+                step=1,
             ),
             cl.input_widget.Slider(
                 id="temperature",
@@ -206,8 +208,8 @@ async def on_chat_start() -> None:
                 values=["auto", "semantic", "hybrid", "hyde", "stepback"],
                 initial_value="auto",
             ),
-        ]
-    ).send()
+    ]
+    settings = await cl.ChatSettings(inputs).send()
 
     await cl.Message(
         content=f"Knowledge Base ready. Strategy routing and reranking enabled.\n"
@@ -360,7 +362,7 @@ async def _handle_settings_set(key_path: str, value: str) -> None:
     obj[keys[-1]] = parsed_value
     save_config(_config)
 
-    if key_path == "knowledge_base.monitored_folder" and _watcher:
+    if key_path == "knowledge_base.monitored_folder" and _watcher and _pipeline:
         _watcher.stop()
         kb_cfg = _config["knowledge_base"]
         _watcher = FileWatcher(

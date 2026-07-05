@@ -1,6 +1,10 @@
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import chainlit as cl
 
 from src.core.config import load_config
@@ -27,7 +31,7 @@ def _get_llm(config: dict):
     model = profile["model"]
     temperature = profile.get("temperature", 0.3)
     api_key_env = profile.get("api_key_env", "")
-    api_key = os.environ.get(api_key_env, "")
+    api_key = os.environ.get(api_key_env, "") if api_key_env else ""
 
     if provider == "anthropic":
         from langchain_anthropic import ChatAnthropic
@@ -39,6 +43,14 @@ def _get_llm(config: dict):
         from langchain_openai import ChatOpenAI
 
         return ChatOpenAI(model=model, temperature=temperature, openai_api_key=api_key)
+    elif provider == "bedrock":
+        from langchain_aws import ChatBedrockConverse
+
+        return ChatBedrockConverse(
+            model_id=model,
+            temperature=temperature,
+            region_name=profile.get("region", "us-east-1"),
+        )
     else:
         raise ValueError(f"Unknown LLM provider: {provider}")
 

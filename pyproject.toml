@@ -8,6 +8,7 @@ dependencies = [
     "langchain-community>=0.3",
     "langchain-anthropic>=0.3",
     "langchain-openai>=0.3",
+    "langchain-aws>=0.3",
     "qdrant-client>=1.12",
     "sentence-transformers>=3.0",
     "chainlit>=2.0",

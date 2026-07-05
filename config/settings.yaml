@@ -33,8 +33,13 @@ storage:
   collection_name: "knowledge_base"
 
 llm:
-  active_profile: "anthropic-default"
+  active_profile: "bedrock"
   profiles:
+    bedrock:
+      provider: "bedrock"
+      model: "us.anthropic.claude-sonnet-4-20250514-v1:0"
+      temperature: 0.3
+      region: "us-east-1"
     anthropic-default:
       provider: "anthropic"
       model: "claude-sonnet-4-20250514"

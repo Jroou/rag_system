@@ -43,9 +43,13 @@ class RAGEngine:
         return answer, results, strategy_name
 
     async def aquery_stream(
-        self, user_query: str
+        self, user_query: str, strategy_override: str | None = None
     ) -> tuple[AsyncIterator[str], list[RetrievalResult], str]:
-        strategy_name, strategy = self._router.route(user_query)
+        if strategy_override and strategy_override != "auto":
+            strategy = self._router.get_strategy(strategy_override)
+            strategy_name = strategy_override
+        else:
+            strategy_name, strategy = self._router.route(user_query)
         results = strategy.retrieve(user_query, top_k=self._top_k)
 
         if results:

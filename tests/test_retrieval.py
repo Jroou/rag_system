@@ -112,7 +112,7 @@ class TestGenerator:
 
         messages = generator.build_prompt("What color is the sky?", results)
         assert messages[0]["role"] == "system"
-        assert messages[0]["content"] == "You are a helper."
+        assert messages[0]["content"].startswith("You are a helper.")
         assert messages[-1]["role"] == "user"
         assert "What color is the sky?" in messages[-1]["content"]
         assert "/docs/sky.md" in messages[-1]["content"]

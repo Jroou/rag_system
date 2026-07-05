@@ -5,6 +5,12 @@ from src.retrieval.base import RetrievalResult
 
 
 class Generator:
+    CITATION_INSTRUCTION = (
+        "\n\nWhen answering, cite your sources using inline numbered references like [1], [2], etc. "
+        "Each number corresponds to the source number shown in the context. "
+        "Only cite sources you actually use."
+    )
+
     def __init__(self, llm, system_prompt: str):
         self._llm = llm
         self._system_prompt = system_prompt
@@ -20,7 +26,11 @@ class Generator:
             )
         context = "\n\n---\n\n".join(context_parts)
 
-        messages = [{"role": "system", "content": self._system_prompt}]
+        system_content = self._system_prompt
+        if results:
+            system_content += self.CITATION_INSTRUCTION
+
+        messages = [{"role": "system", "content": system_content}]
 
         if chat_history:
             messages.extend(chat_history)

@@ -29,6 +29,21 @@ class SQLiteStore:
                 citations TEXT NOT NULL DEFAULT '[]',
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS threads (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL DEFAULT '',
+                summary TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS thread_messages (
+                id TEXT PRIMARY KEY,
+                thread_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (thread_id) REFERENCES threads(id)
+            );
         """)
         self._conn.commit()
 
@@ -95,6 +110,72 @@ class SQLiteStore:
 
     def delete_finding(self, finding_id: str) -> None:
         self._conn.execute("DELETE FROM findings WHERE id = ?", (finding_id,))
+        self._conn.commit()
+
+    # --- Thread persistence ---
+
+    def create_thread(self, thread_id: str, title: str) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            "INSERT INTO threads (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            (thread_id, title, now, now),
+        )
+        self._conn.commit()
+
+    def update_thread_title(self, thread_id: str, title: str) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            "UPDATE threads SET title = ?, updated_at = ? WHERE id = ?",
+            (title, now, thread_id),
+        )
+        self._conn.commit()
+
+    def update_thread_summary(self, thread_id: str, summary: str) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            "UPDATE threads SET summary = ?, updated_at = ? WHERE id = ?",
+            (summary, now, thread_id),
+        )
+        self._conn.commit()
+
+    def touch_thread(self, thread_id: str) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            "UPDATE threads SET updated_at = ? WHERE id = ?", (now, thread_id)
+        )
+        self._conn.commit()
+
+    def list_threads(self, limit: int = 50) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM threads ORDER BY updated_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_thread(self, thread_id: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM threads WHERE id = ?", (thread_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def add_thread_message(self, message_id: str, thread_id: str, role: str, content: str) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            "INSERT INTO thread_messages (id, thread_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
+            (message_id, thread_id, role, content, now),
+        )
+        self._conn.commit()
+        self.touch_thread(thread_id)
+
+    def get_thread_messages(self, thread_id: str) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM thread_messages WHERE thread_id = ? ORDER BY created_at ASC",
+            (thread_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_thread(self, thread_id: str) -> None:
+        self._conn.execute("DELETE FROM thread_messages WHERE thread_id = ?", (thread_id,))
+        self._conn.execute("DELETE FROM threads WHERE id = ?", (thread_id,))
         self._conn.commit()
 
     def close(self) -> None:

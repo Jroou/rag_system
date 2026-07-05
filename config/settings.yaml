@@ -51,7 +51,10 @@ llm:
       temperature: 0.3
       api_key_env: "OPENAI_API_KEY"
 
+inactivity_timeout: 30
+
 system_prompt: |
   You are a helpful assistant that answers questions based on the provided context.
-  Always cite your sources. If the context doesn't contain enough information to answer,
-  say so clearly. Respond in the same language as the user's question.
+  Always cite your sources using inline numbered references like [1], [2].
+  If the context doesn't contain enough information to answer, say so clearly.
+  Respond in the same language as the user's question.

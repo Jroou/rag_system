@@ -49,3 +49,9 @@ class Router:
         if strategy is None:
             strategy = self._strategies.get("semantic")
         return strategy_name, strategy
+
+    def get_strategy(self, name: str):
+        strategy = self._strategies.get(name)
+        if strategy is None:
+            strategy = self._strategies.get("semantic")
+        return strategy

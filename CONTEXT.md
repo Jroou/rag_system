@@ -67,3 +67,21 @@ _Avoid_: cooldown, delay, throttle
 **Profile**:
 A named LLM configuration (provider, model, temperature) that the user can switch between in the UI.
 _Avoid_: preset, config, mode
+
+**Citation**:
+An inline numbered reference (e.g., [1]) in a generated response that links a specific claim to a source Document. A footnote block at the end maps numbers to Document names.
+_Avoid_: reference, link, source tag
+
+### Conversation
+
+**Thread**:
+A single conversation session between the user and the system, containing an ordered sequence of messages. Persisted in SQLite across restarts.
+_Avoid_: chat, session, conversation
+
+**Summary**:
+An LLM-compressed one-sentence description of a Thread's content, generated either by inactivity timeout or manual user action. Displayed in the history sidebar.
+_Avoid_: digest, recap, title
+
+**Inactivity Timeout**:
+The configurable duration (default 30 minutes) after the last message in a Thread before automatic summarization triggers.
+_Avoid_: idle timer, session expiry, cooldown

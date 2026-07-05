@@ -33,6 +33,7 @@ _embedder: Embedder | None = None
 _pipeline: IngestionPipeline | None = None
 _engine: RAGEngine | None = None
 _watcher: FileWatcher | None = None
+_inactivity_tasks: dict[str, asyncio.Task] = {}
 
 
 def _get_llm_from_profile(profile: dict[str, Any]) -> Any:
@@ -143,17 +144,70 @@ def _initialize() -> None:
 async def on_chat_start() -> None:
     _initialize()
     assert _config is not None
+    assert _sqlite is not None
 
     profiles = list(_config["llm"]["profiles"].keys())
     active = _config["llm"]["active_profile"]
 
-    chat_profiles = [
-        cl.ChatProfile(name=name, markdown_description=f"LLM Profile: {name}")
-        for name in profiles
-    ]
-    if chat_profiles:
-        cl.user_session.set("profiles", profiles)
-        cl.user_session.set("active_profile", active)
+    cl.user_session.set("profiles", profiles)
+    cl.user_session.set("active_profile", active)
+
+    # Create a new thread for this session
+    thread_id = str(uuid.uuid4())
+    _sqlite.create_thread(thread_id, "New conversation")
+    cl.user_session.set("thread_id", thread_id)
+
+    # Register settings panel
+    settings = await cl.ChatSettings(
+        [
+            cl.input_widget.TextInput(
+                id="system_prompt",
+                label="System Prompt",
+                initial=_config.get("system_prompt", "You are a helpful assistant."),
+            ),
+            cl.input_widget.NumberInput(
+                id="inactivity_timeout",
+                label="Inactivity Timeout (minutes)",
+                initial=_config.get("inactivity_timeout", 30),
+                min=1,
+                max=180,
+            ),
+            cl.input_widget.Select(
+                id="profile",
+                label="LLM Profile",
+                values=profiles,
+                initial_value=active,
+            ),
+            cl.input_widget.NumberInput(
+                id="top_k",
+                label="Top-K Retrieval",
+                initial=_config["retrieval"]["top_k"],
+                min=1,
+                max=50,
+            ),
+            cl.input_widget.NumberInput(
+                id="rerank_top_n",
+                label="Rerank Top-N",
+                initial=_config.get("reranker", {}).get("top_n", 5),
+                min=1,
+                max=20,
+            ),
+            cl.input_widget.Slider(
+                id="temperature",
+                label="Temperature",
+                initial=_config["llm"]["profiles"][active].get("temperature", 0.3),
+                min=0,
+                max=1,
+                step=0.05,
+            ),
+            cl.input_widget.Select(
+                id="strategy_override",
+                label="Strategy Override",
+                values=["auto", "semantic", "hybrid", "hyde", "stepback"],
+                initial_value="auto",
+            ),
+        ]
+    ).send()
 
     await cl.Message(
         content=f"Knowledge Base ready. Strategy routing and reranking enabled.\n"
@@ -166,15 +220,66 @@ async def on_settings_update(settings: dict[str, Any]) -> None:
     assert _config is not None
     assert _engine is not None
 
-    profile_name = settings.get("profile")
-    if profile_name and profile_name in _config["llm"]["profiles"]:
-        profile = _config["llm"]["profiles"][profile_name]
-        llm = _get_llm_from_profile(profile)
-        system_prompt = _config.get("system_prompt", "You are a helpful assistant.")
+    changed = []
+
+    # System prompt
+    system_prompt = settings.get("system_prompt")
+    if system_prompt and system_prompt != _config.get("system_prompt"):
+        _config["system_prompt"] = system_prompt
+        llm = _engine._generator._llm
         generator = Generator(llm=llm, system_prompt=system_prompt)
         _engine.update_generator(generator)
-        cl.user_session.set("active_profile", profile_name)
-        await cl.Message(content=f"Switched to profile: **{profile_name}**").send()
+        changed.append("system prompt")
+
+    # LLM Profile
+    profile_name = settings.get("profile")
+    if profile_name and profile_name in _config["llm"]["profiles"]:
+        current = cl.user_session.get("active_profile")
+        if profile_name != current:
+            profile = _config["llm"]["profiles"][profile_name]
+            llm = _get_llm_from_profile(profile)
+            sp = _config.get("system_prompt", "You are a helpful assistant.")
+            generator = Generator(llm=llm, system_prompt=sp)
+            _engine.update_generator(generator)
+            cl.user_session.set("active_profile", profile_name)
+            changed.append(f"profile → {profile_name}")
+
+    # Temperature
+    temperature = settings.get("temperature")
+    if temperature is not None:
+        active_profile = cl.user_session.get("active_profile") or _config["llm"]["active_profile"]
+        _config["llm"]["profiles"][active_profile]["temperature"] = temperature
+        changed.append(f"temperature → {temperature}")
+
+    # Top-K
+    top_k = settings.get("top_k")
+    if top_k is not None:
+        _config["retrieval"]["top_k"] = int(top_k)
+        _engine._top_k = int(top_k)
+        changed.append(f"top-K → {int(top_k)}")
+
+    # Rerank Top-N
+    rerank_top_n = settings.get("rerank_top_n")
+    if rerank_top_n is not None:
+        _config.setdefault("reranker", {})["top_n"] = int(rerank_top_n)
+        _engine._rerank_top_n = int(rerank_top_n)
+        changed.append(f"rerank top-N → {int(rerank_top_n)}")
+
+    # Inactivity timeout
+    timeout = settings.get("inactivity_timeout")
+    if timeout is not None:
+        _config["inactivity_timeout"] = int(timeout)
+        changed.append(f"inactivity timeout → {int(timeout)} min")
+
+    # Strategy override
+    strategy = settings.get("strategy_override")
+    if strategy:
+        cl.user_session.set("strategy_override", strategy)
+        changed.append(f"strategy → {strategy}")
+
+    if changed:
+        save_config(_config)
+        await cl.Message(content=f"Settings updated: {', '.join(changed)}").send()
 
 
 async def _handle_save_finding(response_text: str, results: list) -> None:
@@ -309,6 +414,21 @@ async def _handle_reindex(file_name: str) -> None:
         await cl.Message(content=f"Failed to re-index: {path.name}").send()
 
 
+async def _handle_history() -> None:
+    assert _sqlite is not None
+    threads = _sqlite.list_threads(limit=20)
+    if not threads:
+        await cl.Message(content="No conversation history.").send()
+        return
+
+    lines = ["## Conversation History\n"]
+    for t in threads:
+        display = t["summary"] or t["title"] or "Untitled"
+        date = t["updated_at"][:16].replace("T", " ")
+        lines.append(f"- **{display}** — {date} `[{t['id'][:8]}]`")
+    await cl.Message(content="\n".join(lines)).send()
+
+
 async def _handle_doc_delete(file_name: str) -> None:
     assert _sqlite is not None
     assert _pipeline is not None
@@ -323,6 +443,61 @@ async def _handle_doc_delete(file_name: str) -> None:
     await cl.Message(content=f"Deleted from index: {path.name}").send()
 
 
+async def _summarize_thread(thread_id: str) -> None:
+    assert _sqlite is not None
+    assert _engine is not None
+
+    messages = _sqlite.get_thread_messages(thread_id)
+    if not messages:
+        return
+
+    conversation = "\n".join(
+        f"{m['role']}: {m['content'][:300]}" for m in messages[:20]
+    )
+
+    try:
+        llm = _engine._generator._llm
+        prompt = (
+            "Summarize this conversation in 1-2 concise sentences capturing the key topics discussed:\n\n"
+            f"{conversation}"
+        )
+        resp = await asyncio.to_thread(
+            llm.invoke, [{"role": "user", "content": prompt}]
+        )
+        summary = resp.content if isinstance(resp.content, str) else str(resp.content)
+        _sqlite.update_thread_summary(thread_id, summary)
+    except Exception:
+        first_msg = messages[0]["content"][:50] if messages else "Empty thread"
+        _sqlite.update_thread_summary(thread_id, first_msg)
+
+
+async def _inactivity_watcher(thread_id: str) -> None:
+    assert _config is not None
+    timeout_minutes = _config.get("inactivity_timeout", 30)
+    await asyncio.sleep(timeout_minutes * 60)
+    await _summarize_thread(thread_id)
+
+
+def _reset_inactivity_timer(thread_id: str) -> None:
+    if thread_id in _inactivity_tasks:
+        _inactivity_tasks[thread_id].cancel()
+    _inactivity_tasks[thread_id] = asyncio.create_task(_inactivity_watcher(thread_id))
+
+
+def _build_footnotes(results: list) -> str:
+    seen_paths: set[str] = set()
+    lines = ["\n\n---\n**Sources:**"]
+    idx = 1
+    for r in results:
+        if r.source_path not in seen_paths:
+            seen_paths.add(r.source_path)
+            name = Path(r.source_path).name
+            excerpt = (r.parent_text or r.text)[:100].replace("\n", " ")
+            lines.append(f"[{idx}] {name} — \"{excerpt}...\"")
+            idx += 1
+    return "\n".join(lines) if idx > 1 else ""
+
+
 @cl.on_message
 async def on_message(message: cl.Message) -> None:
     global _engine, _pipeline, _config, _watcher
@@ -333,6 +508,8 @@ async def on_message(message: cl.Message) -> None:
     assert _engine is not None
     assert _pipeline is not None
     assert _config is not None
+
+    thread_id = cl.user_session.get("thread_id")
 
     if message.elements:
         for element in message.elements:
@@ -349,6 +526,15 @@ async def on_message(message: cl.Message) -> None:
         return
 
     content = message.content.strip()
+
+    # Persist user message to thread
+    if thread_id and _sqlite:
+        _sqlite.add_thread_message(str(uuid.uuid4()), thread_id, "user", content)
+        # Update title from first real message
+        thread = _sqlite.get_thread(thread_id)
+        if thread and thread["title"] == "New conversation":
+            _sqlite.update_thread_title(thread_id, content[:50])
+        _reset_inactivity_timer(thread_id)
 
     # Command routing
     if content.startswith("/profile "):
@@ -393,8 +579,18 @@ async def on_message(message: cl.Message) -> None:
         await _handle_doc_delete(content[len("/doc delete "):].strip())
         return
 
+    if content == "/history":
+        await _handle_history()
+        return
+    if content == "/compress":
+        if thread_id:
+            await _summarize_thread(thread_id)
+            await cl.Message(content="Thread compressed.").send()
+        return
+
     # Normal query
-    stream, results, _ = await _engine.aquery_stream(message.content)
+    strategy_override = cl.user_session.get("strategy_override") or "auto"
+    stream, results, _ = await _engine.aquery_stream(message.content, strategy_override=strategy_override)
 
     msg = cl.Message(content="")
     full_response = ""
@@ -404,6 +600,12 @@ async def on_message(message: cl.Message) -> None:
         await msg.stream_token(token)
 
     if results:
+        # Append footnote block with source citations
+        footnotes = _build_footnotes(results)
+        if footnotes:
+            full_response += footnotes
+            await msg.stream_token(footnotes)
+
         sources = []
         seen_paths: set[str] = set()
         for r in results:
@@ -428,13 +630,17 @@ async def on_message(message: cl.Message) -> None:
                     {"source_path": r.source_path, "text": (r.parent_text or r.text)[:200]}
                     for r in results
                 ])},
-                label="💾 Save Finding",
+                label="\U0001f4be Save Finding",
             )
         ]
         msg.actions = actions
 
     await msg.update()
     _engine.record_response(full_response)
+
+    # Persist assistant response to thread
+    if thread_id and _sqlite:
+        _sqlite.add_thread_message(str(uuid.uuid4()), thread_id, "assistant", full_response)
 
 
 @cl.action_callback("save_finding")

@@ -1,0 +1,52 @@
+knowledge_base:
+  monitored_folder: "./data"
+  supported_extensions:
+    - ".pdf"
+    - ".md"
+    - ".py"
+    - ".js"
+    - ".ts"
+    - ".doc"
+    - ".docx"
+
+embedding:
+  model_name: "multilingual-e5-large"
+  device: "cpu"
+
+reranker:
+  model_name: "BAAI/bge-reranker-v2-m3"
+  device: "cpu"
+  top_n: 5
+
+retrieval:
+  top_k: 20
+  default_strategy: "semantic"
+
+chunking:
+  parent_chunk_size: 1000
+  child_chunk_size: 200
+  chunk_overlap: 50
+
+storage:
+  qdrant_path: "./qdrant_data"
+  sqlite_path: "./rag_system.db"
+  collection_name: "knowledge_base"
+
+llm:
+  active_profile: "anthropic-default"
+  profiles:
+    anthropic-default:
+      provider: "anthropic"
+      model: "claude-sonnet-4-20250514"
+      temperature: 0.3
+      api_key_env: "ANTHROPIC_API_KEY"
+    openai-default:
+      provider: "openai"
+      model: "gpt-4o"
+      temperature: 0.3
+      api_key_env: "OPENAI_API_KEY"
+
+system_prompt: |
+  You are a helpful assistant that answers questions based on the provided context.
+  Always cite your sources. If the context doesn't contain enough information to answer,
+  say so clearly. Respond in the same language as the user's question.

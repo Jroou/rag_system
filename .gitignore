@@ -3,3 +3,11 @@
 .idea/
 data/
 skills/
+__pycache__/
+*.pyc
+*.pyo
+*.db
+qdrant_data/
+.chainlit/
+dist/
+*.egg-info/

@@ -1,0 +1,83 @@
+from src.retrieval.base import BaseStrategy, RetrievalResult
+from src.retrieval.semantic import SemanticStrategy
+from src.storage.qdrant_store import QdrantStore
+
+STEPBACK_PROMPT = """Given the following specific question, generate a broader, more general version of this question that would help find background context. Return only the broader question, nothing else.
+
+Specific question: {query}
+
+Broader question:"""
+
+
+class StepBackStrategy(BaseStrategy):
+    def __init__(self, qdrant_store: QdrantStore, embedder, llm):
+        self._qdrant = qdrant_store
+        self._embedder = embedder
+        self._llm = llm
+        self._fallback = SemanticStrategy(qdrant_store=qdrant_store, embedder=embedder)
+
+    def retrieve(self, query: str, top_k: int = 20) -> list[RetrievalResult]:
+        try:
+            broad_query = self._generate_broad_query(query)
+        except Exception:
+            return self._fallback.retrieve(query, top_k)
+
+        broad_embedding = self._embedder.embed_query(broad_query)
+
+        child_results = self._qdrant.search(
+            query_embedding=broad_embedding,
+            top_k=top_k,
+            filter_conditions={"chunk_type": "child"},
+        )
+
+        results = []
+        seen_parents = set()
+
+        for hit in child_results:
+            metadata = hit["metadata"]
+            parent_chunk_id = metadata.get("parent_chunk_id")
+            parent_text = None
+
+            if parent_chunk_id and parent_chunk_id not in seen_parents:
+                seen_parents.add(parent_chunk_id)
+                parent_text = self._resolve_parent_text(parent_chunk_id)
+
+            results.append(
+                RetrievalResult(
+                    chunk_id=hit["id"],
+                    text=metadata.get("text", ""),
+                    score=hit["score"],
+                    source_path=metadata.get("source_path", ""),
+                    document_type=metadata.get("document_type", ""),
+                    parent_text=parent_text,
+                )
+            )
+
+        return results
+
+    def _generate_broad_query(self, query: str) -> str:
+        prompt = STEPBACK_PROMPT.format(query=query)
+        response = self._llm.invoke([{"role": "user", "content": prompt}])
+        return response.content
+
+    def _resolve_parent_text(self, parent_chunk_id: str) -> str | None:
+        from qdrant_client.models import FieldCondition, Filter, MatchValue
+
+        try:
+            points = self._qdrant._client.scroll(
+                collection_name=self._qdrant._collection_name,
+                scroll_filter=Filter(
+                    must=[
+                        FieldCondition(key="chunk_type", match=MatchValue(value="parent")),
+                    ]
+                ),
+                limit=100,
+                with_payload=True,
+                with_vectors=False,
+            )[0]
+            for point in points:
+                if str(point.id) == parent_chunk_id:
+                    return point.payload.get("text")
+        except Exception:
+            pass
+        return None

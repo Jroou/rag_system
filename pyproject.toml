@@ -19,6 +19,11 @@ dependencies = [
     "unstructured>=0.15",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
 [project.scripts]
 start = "src.main:main"
 

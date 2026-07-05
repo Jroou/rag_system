@@ -2,7 +2,7 @@ import queue
 import threading
 import time
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
@@ -63,8 +63,8 @@ class FileWatcher:
         self,
         folder: str,
         supported_extensions: list[str],
-        on_ingest: Callable[[Path], None],
-        on_delete: Callable[[Path], None],
+        on_ingest: Callable[[Path], Any],
+        on_delete: Callable[[Path], Any],
         on_progress: Callable[[str], None] | None = None,
         debounce_seconds: float = 2.0,
     ):

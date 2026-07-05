@@ -49,4 +49,9 @@ Question: {query}"""
         messages = self.build_prompt(query, results, chat_history)
         async for chunk in self._llm.astream(messages):
             if chunk.content:
-                yield chunk.content
+                text = chunk.content if isinstance(chunk.content, str) else "".join(
+                    block.get("text", "") if isinstance(block, dict) else str(block)
+                    for block in chunk.content
+                )
+                if text:
+                    yield text

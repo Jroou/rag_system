@@ -6,9 +6,11 @@ import pytest
 
 from src.ingestion.pipeline import IngestionPipeline
 from src.retrieval.base import RetrievalResult
+from src.retrieval.reranker import Reranker
 from src.retrieval.semantic import SemanticStrategy
 from src.generation.generator import Generator
 from src.core.rag_engine import RAGEngine
+from src.routing.router import Router
 from src.storage.qdrant_store import DENSE_VECTOR_SIZE, QdrantStore
 from src.storage.sqlite_store import SQLiteStore
 
@@ -136,6 +138,11 @@ class TestGenerator:
         mock_llm.invoke.assert_called_once()
 
 
+class MockReranker:
+    def rerank(self, query, results, top_n=5):
+        return results[:top_n]
+
+
 class TestRAGEngine:
     def test_query_end_to_end(self, setup):
         strategy, qdrant, embedder = setup
@@ -144,11 +151,14 @@ class TestRAGEngine:
             content="The system uses modular architecture."
         )
         generator = Generator(llm=mock_llm, system_prompt="You are a helper.")
-        engine = RAGEngine(strategy=strategy, generator=generator, top_k=5)
+        router = Router(strategies={"semantic": strategy})
+        reranker = MockReranker()
+        engine = RAGEngine(router=router, reranker=reranker, generator=generator, top_k=5)
 
-        answer, results = engine.query("What is the architecture?")
+        answer, results, strategy_name = engine.query("architecture")
         assert "modular architecture" in answer
         assert len(results) > 0
+        assert strategy_name == "semantic"
         mock_llm.invoke.assert_called_once()
 
     def test_chat_history_maintained(self, setup):
@@ -156,7 +166,9 @@ class TestRAGEngine:
         mock_llm = MagicMock()
         mock_llm.invoke.return_value = MagicMock(content="Answer 1")
         generator = Generator(llm=mock_llm, system_prompt="Helper")
-        engine = RAGEngine(strategy=strategy, generator=generator, top_k=5)
+        router = Router(strategies={"semantic": strategy})
+        reranker = MockReranker()
+        engine = RAGEngine(router=router, reranker=reranker, generator=generator, top_k=5)
 
         engine.query("First question")
         assert len(engine._chat_history) == 2

@@ -39,7 +39,7 @@ llm:
       provider: "bedrock"
       model: "us.anthropic.claude-sonnet-4-20250514-v1:0"
       temperature: 0.3
-      region: "us-east-1"
+      region: "eu-north-1"
     anthropic-default:
       provider: "anthropic"
       model: "claude-sonnet-4-20250514"

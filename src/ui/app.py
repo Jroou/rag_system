@@ -12,7 +12,13 @@ from src.core.rag_engine import RAGEngine
 from src.generation.generator import Generator
 from src.ingestion.embedder import Embedder
 from src.ingestion.pipeline import IngestionPipeline
+from src.ingestion.watcher import FileWatcher
+from src.retrieval.hybrid import HybridStrategy
+from src.retrieval.hyde import HyDEStrategy
+from src.retrieval.reranker import Reranker
 from src.retrieval.semantic import SemanticStrategy
+from src.retrieval.stepback import StepBackStrategy
+from src.routing.router import Router
 from src.storage.qdrant_store import QdrantStore
 from src.storage.sqlite_store import SQLiteStore
 
@@ -22,11 +28,10 @@ _sqlite = None
 _embedder = None
 _pipeline = None
 _engine = None
+_watcher = None
 
 
-def _get_llm(config: dict):
-    profile_name = config["llm"]["active_profile"]
-    profile = config["llm"]["profiles"][profile_name]
+def _get_llm_from_profile(profile: dict):
     provider = profile["provider"]
     model = profile["model"]
     temperature = profile.get("temperature", 0.3)
@@ -55,8 +60,27 @@ def _get_llm(config: dict):
         raise ValueError(f"Unknown LLM provider: {provider}")
 
 
+def _get_llm(config: dict):
+    profile_name = config["llm"]["active_profile"]
+    profile = config["llm"]["profiles"][profile_name]
+    return _get_llm_from_profile(profile)
+
+
+def _build_strategies(qdrant, embedder, llm):
+    semantic = SemanticStrategy(qdrant_store=qdrant, embedder=embedder)
+    hybrid = HybridStrategy(qdrant_store=qdrant, embedder=embedder)
+    hyde = HyDEStrategy(qdrant_store=qdrant, embedder=embedder, llm=llm)
+    stepback = StepBackStrategy(qdrant_store=qdrant, embedder=embedder, llm=llm)
+    return {
+        "semantic": semantic,
+        "hybrid": hybrid,
+        "hyde": hyde,
+        "stepback": stepback,
+    }
+
+
 def _initialize():
-    global _config, _qdrant, _sqlite, _embedder, _pipeline, _engine
+    global _config, _qdrant, _sqlite, _embedder, _pipeline, _engine, _watcher
 
     _config = load_config()
     storage_cfg = _config["storage"]
@@ -80,19 +104,66 @@ def _initialize():
     llm = _get_llm(_config)
     system_prompt = _config.get("system_prompt", "You are a helpful assistant.")
     generator = Generator(llm=llm, system_prompt=system_prompt)
-    strategy = SemanticStrategy(qdrant_store=_qdrant, embedder=_embedder)
+
+    strategies = _build_strategies(_qdrant, _embedder, llm)
+    router = Router(strategies=strategies)
+
+    reranker_cfg = _config.get("reranker", {})
+    reranker = Reranker(
+        model_name=reranker_cfg.get("model_name", "BAAI/bge-reranker-v2-m3"),
+        device=reranker_cfg.get("device", "cpu"),
+    )
 
     _engine = RAGEngine(
-        strategy=strategy,
+        router=router,
+        reranker=reranker,
         generator=generator,
         top_k=_config["retrieval"]["top_k"],
+        rerank_top_n=reranker_cfg.get("top_n", 5),
     )
+
+    kb_cfg = _config["knowledge_base"]
+    _watcher = FileWatcher(
+        folder=kb_cfg["monitored_folder"],
+        supported_extensions=kb_cfg["supported_extensions"],
+        on_ingest=_pipeline.ingest,
+        on_delete=_pipeline.remove,
+    )
+    _watcher.start()
 
 
 @cl.on_chat_start
 async def on_chat_start():
     _initialize()
-    await cl.Message(content="Knowledge Base ready. Ask me anything about your documents.").send()
+
+    profiles = list(_config["llm"]["profiles"].keys())
+    active = _config["llm"]["active_profile"]
+
+    chat_profiles = [
+        cl.ChatProfile(name=name, markdown_description=f"LLM Profile: {name}")
+        for name in profiles
+    ]
+    if chat_profiles:
+        cl.user_session.set("profiles", profiles)
+        cl.user_session.set("active_profile", active)
+
+    await cl.Message(
+        content=f"Knowledge Base ready. Strategy routing and reranking enabled.\n"
+        f"Active LLM Profile: **{active}**"
+    ).send()
+
+
+@cl.on_settings_update
+async def on_settings_update(settings: dict):
+    profile_name = settings.get("profile")
+    if profile_name and profile_name in _config["llm"]["profiles"]:
+        profile = _config["llm"]["profiles"][profile_name]
+        llm = _get_llm_from_profile(profile)
+        system_prompt = _config.get("system_prompt", "You are a helpful assistant.")
+        generator = Generator(llm=llm, system_prompt=system_prompt)
+        _engine.update_generator(generator)
+        cl.user_session.set("active_profile", profile_name)
+        await cl.Message(content=f"Switched to profile: **{profile_name}**").send()
 
 
 @cl.on_message
@@ -100,26 +171,36 @@ async def on_message(message: cl.Message):
     if not _engine:
         _initialize()
 
-    # Handle file uploads
     if message.elements:
         for element in message.elements:
             if hasattr(element, "path") and element.path:
                 file_path = Path(element.path)
                 doc_id = _pipeline.ingest(file_path)
                 if doc_id:
-                    await cl.Message(
-                        content=f"Indexed: {file_path.name}"
-                    ).send()
+                    await cl.Message(content=f"Indexed: {file_path.name}").send()
                 else:
-                    await cl.Message(
-                        content=f"Failed to index: {file_path.name}"
-                    ).send()
+                    await cl.Message(content=f"Failed to index: {file_path.name}").send()
 
     if not message.content.strip():
         return
 
-    # Stream response
-    stream, results = await _engine.aquery_stream(message.content)
+    # Check for profile switch command
+    content = message.content.strip()
+    if content.startswith("/profile "):
+        profile_name = content[len("/profile "):].strip()
+        if profile_name in _config["llm"]["profiles"]:
+            profile = _config["llm"]["profiles"][profile_name]
+            llm = _get_llm_from_profile(profile)
+            system_prompt = _config.get("system_prompt", "You are a helpful assistant.")
+            generator = Generator(llm=llm, system_prompt=system_prompt)
+            _engine.update_generator(generator)
+            await cl.Message(content=f"Switched to profile: **{profile_name}**").send()
+        else:
+            available = ", ".join(_config["llm"]["profiles"].keys())
+            await cl.Message(content=f"Unknown profile. Available: {available}").send()
+        return
+
+    stream, results, strategy_name = await _engine.aquery_stream(message.content)
 
     msg = cl.Message(content="")
     full_response = ""
@@ -128,7 +209,6 @@ async def on_message(message: cl.Message):
         full_response += token
         await msg.stream_token(token)
 
-    # Add citations
     if results:
         sources = []
         seen_paths = set()
@@ -145,5 +225,11 @@ async def on_message(message: cl.Message):
                 )
         msg.elements = sources
 
-    await msg.send()
+    await msg.update()
     _engine.record_response(full_response)
+
+
+@cl.on_stop
+def on_stop():
+    if _watcher:
+        _watcher.stop()

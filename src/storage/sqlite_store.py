@@ -23,6 +23,12 @@ class SQLiteStore:
                 indexed_at TEXT NOT NULL,
                 error_message TEXT
             );
+            CREATE TABLE IF NOT EXISTS findings (
+                id TEXT PRIMARY KEY,
+                text TEXT NOT NULL,
+                citations TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL
+            );
         """)
         self._conn.commit()
 
@@ -72,6 +78,24 @@ class SQLiteStore:
     def list_documents(self) -> list[dict]:
         rows = self._conn.execute("SELECT * FROM documents ORDER BY indexed_at DESC").fetchall()
         return [dict(r) for r in rows]
+
+    def add_finding(self, finding_id: str, text: str, citations: str) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            "INSERT INTO findings (id, text, citations, created_at) VALUES (?, ?, ?, ?)",
+            (finding_id, text, citations, now),
+        )
+        self._conn.commit()
+
+    def list_findings(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM findings ORDER BY created_at DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_finding(self, finding_id: str) -> None:
+        self._conn.execute("DELETE FROM findings WHERE id = ?", (finding_id,))
+        self._conn.commit()
 
     def close(self) -> None:
         self._conn.close()

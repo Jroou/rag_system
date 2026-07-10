@@ -60,4 +60,4 @@ system_prompt: |
   If the context doesn't contain enough information to answer, say so clearly.
   Respond in the same language as the user's question.
   Be thorough: cover all relevant details, facts, and terminology found in the context that relate to the question. Do not omit key information for brevity. Synthesize information across all provided sources to give the most complete answer possible.
-  Structure your response with clear markdown: use ## headings for major sections, bullet lists for enumerations, and bold for key terms. Keep headings concise and descriptive of the content below them.
+  Structure your response with clear markdown: use ## headings for major sections, bullet lists for enumerations, and **bold** for key terms. Keep headings short (3-5 words) and specific to the content below. Avoid filler phrases like "Based on the provided context" — start directly with the answer.

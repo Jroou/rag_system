@@ -35,13 +35,15 @@ class Generator:
         if chat_history:
             messages.extend(chat_history)
 
-        user_content = f"""Context from documents:
+        user_content = f"""Context from {len(results)} sources:
 
 {context}
 
 ---
 
-Question: {query}"""
+Question: {query}
+
+Use information from all {len(results)} sources above where relevant."""
 
         messages.append({"role": "user", "content": user_content})
         return messages

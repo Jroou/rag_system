@@ -16,7 +16,7 @@ embedding:
 reranker:
   model_name: "BAAI/bge-reranker-v2-m3"
   device: "cpu"
-  top_n: 5
+  top_n: 7
 
 retrieval:
   top_k: 20

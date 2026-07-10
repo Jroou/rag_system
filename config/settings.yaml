@@ -19,7 +19,7 @@ reranker:
   top_n: 7
 
 retrieval:
-  top_k: 20
+  top_k: 30
   default_strategy: "semantic"
 
 chunking:

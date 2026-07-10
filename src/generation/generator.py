@@ -8,7 +8,8 @@ class Generator:
     CITATION_INSTRUCTION = (
         "\n\nWhen answering, cite your sources using inline numbered references like [1], [2], etc. "
         "Each number corresponds to the source number shown in the context. "
-        "Only cite sources you actually use."
+        "Only cite sources you actually use. "
+        "Every claim in your response must be directly supported by a cited source — do not extrapolate or infer beyond what the sources state."
     )
 
     def __init__(self, llm, system_prompt: str):

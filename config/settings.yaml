@@ -38,7 +38,7 @@ llm:
     bedrock:
       provider: "bedrock"
       model: "eu.anthropic.claude-opus-4-6-v1"
-      temperature: 0.3
+      temperature: 0.1
       region: "eu-north-1"
     anthropic-default:
       provider: "anthropic"

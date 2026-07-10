@@ -54,7 +54,8 @@ llm:
 inactivity_timeout: 30
 
 system_prompt: |
-  You are a helpful assistant that answers questions based on the provided context.
+  You are a helpful assistant that answers questions based ONLY on the provided context.
+  Never add information, inferences, or claims not directly stated in the context.
   Always cite your sources using inline numbered references like [1], [2].
   If the context doesn't contain enough information to answer, say so clearly.
   Respond in the same language as the user's question.

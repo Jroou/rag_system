@@ -21,7 +21,9 @@ class SQLiteStore:
                 file_hash TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'indexed',
                 indexed_at TEXT NOT NULL,
-                error_message TEXT
+                error_message TEXT,
+                original_name TEXT,
+                thread_id TEXT
             );
             CREATE TABLE IF NOT EXISTS findings (
                 id TEXT PRIMARY KEY,
@@ -46,6 +48,16 @@ class SQLiteStore:
             );
         """)
         self._conn.commit()
+        self._migrate()
+
+    def _migrate(self) -> None:
+        cols = {row[1] for row in self._conn.execute("PRAGMA table_info(documents)").fetchall()}
+        if "original_name" not in cols:
+            self._conn.execute("ALTER TABLE documents ADD COLUMN original_name TEXT")
+            self._conn.commit()
+        if "thread_id" not in cols:
+            self._conn.execute("ALTER TABLE documents ADD COLUMN thread_id TEXT")
+            self._conn.commit()
 
     def get_document_by_path(self, source_path: str) -> dict | None:
         row = self._conn.execute(
@@ -61,21 +73,25 @@ class SQLiteStore:
         file_hash: str,
         status: str = "indexed",
         error_message: str | None = None,
+        original_name: str | None = None,
+        thread_id: str | None = None,
     ) -> None:
         now = datetime.now(timezone.utc).isoformat()
         self._conn.execute(
             """
-            INSERT INTO documents (id, source_path, document_type, file_hash, status, indexed_at, error_message)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO documents (id, source_path, document_type, file_hash, status, indexed_at, error_message, original_name, thread_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 source_path = excluded.source_path,
                 document_type = excluded.document_type,
                 file_hash = excluded.file_hash,
                 status = excluded.status,
                 indexed_at = excluded.indexed_at,
-                error_message = excluded.error_message
+                error_message = excluded.error_message,
+                original_name = COALESCE(excluded.original_name, documents.original_name),
+                thread_id = excluded.thread_id
             """,
-            (document_id, source_path, document_type, file_hash, status, now, error_message),
+            (document_id, source_path, document_type, file_hash, status, now, error_message, original_name, thread_id),
         )
         self._conn.commit()
 
@@ -93,6 +109,18 @@ class SQLiteStore:
     def list_documents(self) -> list[dict]:
         rows = self._conn.execute("SELECT * FROM documents ORDER BY indexed_at DESC").fetchall()
         return [dict(r) for r in rows]
+
+    def get_thread_documents(self, thread_id: str) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM documents WHERE thread_id = ?", (thread_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def promote_document_to_global(self, document_id: str) -> None:
+        self._conn.execute(
+            "UPDATE documents SET thread_id = NULL WHERE id = ?", (document_id,)
+        )
+        self._conn.commit()
 
     def add_finding(self, finding_id: str, text: str, citations: str) -> None:
         now = datetime.now(timezone.utc).isoformat()

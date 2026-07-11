@@ -8,6 +8,27 @@ def load_pdf(path: Path) -> list[str]:
     return [page.extract_text() or "" for page in reader.pages]
 
 
+def extract_pdf_title(path: Path) -> str | None:
+    """Return the document title from PDF metadata, or the first non-empty line of page 1."""
+    from pypdf import PdfReader
+
+    reader = PdfReader(str(path))
+    # Try metadata first
+    meta = reader.metadata
+    if meta:
+        title = getattr(meta, "title", None) or meta.get("/Title")
+        if title and title.strip():
+            return title.strip()
+    # Fall back to first meaningful line of page 1
+    if reader.pages:
+        text = reader.pages[0].extract_text() or ""
+        for line in text.splitlines():
+            line = line.strip()
+            if len(line) > 10:
+                return line
+    return None
+
+
 def load_markdown(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 

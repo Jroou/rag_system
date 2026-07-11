@@ -14,5 +14,5 @@ class RetrievalResult:
 
 class BaseStrategy(ABC):
     @abstractmethod
-    def retrieve(self, query: str, top_k: int = 20) -> list[RetrievalResult]:
+    def retrieve(self, query: str, top_k: int = 20, thread_id: str | None = None) -> list[RetrievalResult]:
         ...

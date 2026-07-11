@@ -16,19 +16,27 @@ class StepBackStrategy(BaseStrategy):
         self._llm = llm
         self._fallback = SemanticStrategy(qdrant_store=qdrant_store, embedder=embedder)
 
-    def retrieve(self, query: str, top_k: int = 20) -> list[RetrievalResult]:
+    def retrieve(self, query: str, top_k: int = 20, thread_id: str | None = None) -> list[RetrievalResult]:
         try:
             broad_query = self._generate_broad_query(query)
         except Exception:
-            return self._fallback.retrieve(query, top_k)
+            return self._fallback.retrieve(query, top_k, thread_id=thread_id)
 
         broad_embedding = self._embedder.embed_query(broad_query)
 
-        child_results = self._qdrant.search(
-            query_embedding=broad_embedding,
-            top_k=top_k,
-            filter_conditions={"chunk_type": "child"},
-        )
+        if thread_id is not None:
+            child_results = self._qdrant.search_with_fallback(
+                query_embedding=broad_embedding,
+                top_k=top_k,
+                thread_id=thread_id,
+                filter_conditions={"chunk_type": "child"},
+            )
+        else:
+            child_results = self._qdrant.search(
+                query_embedding=broad_embedding,
+                top_k=top_k,
+                filter_conditions={"chunk_type": "child"},
+            )
 
         results = []
         seen_parents = set()

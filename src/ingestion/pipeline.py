@@ -11,6 +11,7 @@ from src.ingestion.chunkers import (
 )
 from src.ingestion.loaders import (
     detect_document_type,
+    extract_pdf_title,
     load_code,
     load_docx,
     load_markdown,
@@ -38,7 +39,7 @@ class IngestionPipeline:
         self._child_chunk_size = child_chunk_size
         self._chunk_overlap = chunk_overlap
 
-    def ingest(self, file_path: Path, force: bool = False) -> str | None:
+    def ingest(self, file_path: Path, force: bool = False, original_name: str | None = None, thread_id: str | None = None) -> str | None:
         file_path = Path(file_path).resolve()
         if not file_path.exists():
             return None
@@ -55,6 +56,8 @@ class IngestionPipeline:
             self._qdrant.delete_by_document_id(document_id)
 
         doc_type = detect_document_type(file_path)
+        if original_name is None and doc_type == "pdf":
+            original_name = extract_pdf_title(file_path) or file_path.name
         try:
             chunks = self._chunk_document(file_path, doc_type, document_id)
         except Exception as e:
@@ -65,6 +68,8 @@ class IngestionPipeline:
                 file_hash=file_hash,
                 status="error",
                 error_message=str(e),
+                original_name=original_name,
+                thread_id=thread_id,
             )
             return None
 
@@ -75,6 +80,8 @@ class IngestionPipeline:
                 document_type=doc_type,
                 file_hash=file_hash,
                 status="indexed",
+                original_name=original_name,
+                thread_id=thread_id,
             )
             return document_id
 
@@ -94,6 +101,7 @@ class IngestionPipeline:
                     "source_path": str(file_path),
                     "document_type": doc_type,
                     "text": c.text,
+                    "thread_id": thread_id,
                 }
                 for c in child_chunks
             ]
@@ -113,6 +121,7 @@ class IngestionPipeline:
                     "source_path": str(file_path),
                     "document_type": doc_type,
                     "text": c.text,
+                    "thread_id": thread_id,
                 }
                 for c in parent_chunks
             ]
@@ -126,6 +135,8 @@ class IngestionPipeline:
             document_type=doc_type,
             file_hash=file_hash,
             status="indexed",
+            original_name=original_name,
+            thread_id=thread_id,
         )
         return document_id
 
@@ -133,6 +144,24 @@ class IngestionPipeline:
         doc_id = self._sqlite.delete_document(str(Path(file_path).resolve()))
         if doc_id:
             self._qdrant.delete_by_document_id(doc_id)
+
+    def delete_thread_documents(self, thread_id: str) -> int:
+        """Delete all Qdrant vectors and SQLite rows for documents scoped to a thread."""
+        docs = self._sqlite.get_thread_documents(thread_id)
+        for doc in docs:
+            self._qdrant.delete_by_document_id(doc["id"])
+            self._sqlite.delete_document(doc["source_path"])
+        return len(docs)
+
+    def promote_to_global(self, document_id: str) -> None:
+        """Re-tag a thread-scoped document as global KB (thread_id = null) in both stores."""
+        from qdrant_client.models import Filter, FieldCondition, MatchValue, PayloadUpdateOperation, SetPayloadOperation
+        self._qdrant._client.set_payload(
+            collection_name=self._qdrant._collection_name,
+            payload={"thread_id": None},
+            points=Filter(must=[FieldCondition(key="document_id", match=MatchValue(value=document_id))]),
+        )
+        self._sqlite.promote_document_to_global(document_id)
 
     def _chunk_document(
         self, file_path: Path, doc_type: str, document_id: str

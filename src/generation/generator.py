@@ -42,9 +42,7 @@ class Generator:
 
 ---
 
-Question: {query}
-
-Use information from all {len(results)} sources above where relevant."""
+Question: {query}"""
 
         messages.append({"role": "user", "content": user_content})
         return messages

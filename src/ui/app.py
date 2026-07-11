@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import uuid
 from pathlib import Path
 from typing import Any, List
@@ -24,6 +25,7 @@ from src.retrieval.semantic import SemanticStrategy
 from src.retrieval.stepback import StepBackStrategy
 from src.routing.router import Router, STRATEGY_NAMES
 from src.storage.qdrant_store import QdrantStore
+from src.storage.sqlite_data_layer import SQLiteDataLayer
 from src.storage.sqlite_store import SQLiteStore
 from src.ui.command_dispatcher import CommandDispatcher
 
@@ -118,6 +120,18 @@ def _initialize() -> None:
     _watcher.start()
 
 
+# Initialize at import time so models are loaded before Chainlit accepts connections.
+# This avoids blocking the asyncio event loop on the first message and prevents
+# WebSocket timeouts during the ~30s model load.
+_initialize()
+
+
+@cl.data_layer
+def get_data_layer() -> SQLiteDataLayer:
+    assert _sqlite is not None
+    return SQLiteDataLayer(_sqlite)
+
+
 @cl.on_chat_start
 async def on_chat_start() -> None:
     _initialize()
@@ -130,9 +144,8 @@ async def on_chat_start() -> None:
     cl.user_session.set("profiles", profiles)
     cl.user_session.set("active_profile", active)
 
-    # Create a new thread for this session
-    thread_id = str(uuid.uuid4())
-    _sqlite.create_thread(thread_id, "New conversation")
+    # Use Chainlit's thread id (set by the data layer) or generate one
+    thread_id = cl.context.session.thread_id or str(uuid.uuid4())
     cl.user_session.set("thread_id", thread_id)
 
     # Register settings panel
@@ -288,6 +301,8 @@ async def _inactivity_watcher(thread_id: str) -> None:
     timeout_minutes = _config.get("inactivity_timeout", 30)
     await asyncio.sleep(timeout_minutes * 60)
     await _summarize_thread(thread_id)
+    if _pipeline:
+        await asyncio.to_thread(_pipeline.delete_thread_documents, thread_id)
 
 
 def _reset_inactivity_timer(thread_id: str) -> None:
@@ -296,18 +311,29 @@ def _reset_inactivity_timer(thread_id: str) -> None:
     _inactivity_tasks[thread_id] = asyncio.create_task(_inactivity_watcher(thread_id))
 
 
-def _build_footnotes(results: list) -> str:
+def _readable_source_name(source_path: str, sqlite=None) -> str:
+    if sqlite:
+        doc = sqlite.get_document_by_path(source_path)
+        if doc and doc.get("original_name"):
+            return doc["original_name"]
+    name = Path(source_path).name
+    # Strip leading UUID (8-4-4-4-12 hex chars) followed by any separator
+    cleaned = re.sub(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[-_]', '', name, flags=re.IGNORECASE)
+    return cleaned if cleaned != name else name
+
+
+def _build_footnotes(results: list, cited_indices: set[int] | None = None, sqlite=None) -> str:
     seen_paths: set[str] = set()
     lines = ["\n\n---\n**Sources:**"]
     idx = 1
     for r in results:
-        if r.source_path not in seen_paths:
-            seen_paths.add(r.source_path)
-            name = Path(r.source_path).name
-            excerpt = (r.parent_text or r.text)[:100].replace("\n", " ")
-            lines.append(f"[{idx}] {name} — \"{excerpt}...\"")
-            idx += 1
-    return "\n".join(lines) if idx > 1 else ""
+        if cited_indices is None or idx in cited_indices:
+            if r.source_path not in seen_paths:
+                seen_paths.add(r.source_path)
+                name = _readable_source_name(r.source_path, sqlite)
+                lines.append(f"[{idx}] {name}")
+        idx += 1
+    return "\n".join(lines) if len(lines) > 1 else ""
 
 
 @cl.on_message
@@ -327,25 +353,36 @@ async def on_message(message: cl.Message) -> None:
         for element in message.elements:
             if hasattr(element, "path") and element.path:
                 file_path = Path(element.path)
-                await cl.Message(content=f"Indexing: {file_path.name}...").send()
-                doc_id = await asyncio.to_thread(_pipeline.ingest, file_path)
+                upload_name = getattr(element, "name", None) or file_path.name
+                await cl.Message(content=f"Indexing: {upload_name}...").send()
+                # Pass None for original_name so the pipeline can extract the real
+                # title from PDF metadata; fall back to the upload filename.
+                doc_id = await asyncio.to_thread(
+                    _pipeline.ingest, file_path, False, None, thread_id
+                )
                 if doc_id:
-                    await cl.Message(content=f"Indexed: {file_path.name}").send()
+                    # Read back the title the pipeline resolved
+                    doc = _sqlite.get_document_by_path(str(file_path.resolve())) if _sqlite else None
+                    display_name = (doc or {}).get("original_name") or upload_name
+                    confirm_msg = cl.Message(content=f"Indexed: {display_name}")
+                    if thread_id:
+                        confirm_msg.actions = [
+                            cl.Action(
+                                name="promote_to_kb",
+                                payload={"document_id": doc_id, "original_name": display_name},
+                                label="📚 Add to knowledge base",
+                            )
+                        ]
+                    await confirm_msg.send()
                 else:
-                    await cl.Message(content=f"Failed to index: {file_path.name}").send()
+                    await cl.Message(content=f"Failed to index: {upload_name}").send()
 
     if not message.content.strip():
         return
 
     content = message.content.strip()
 
-    # Persist user message to thread
-    if thread_id and _sqlite:
-        _sqlite.add_thread_message(str(uuid.uuid4()), thread_id, "user", content)
-        # Update title from first real message
-        thread = _sqlite.get_thread(thread_id)
-        if thread and thread["title"] == "New conversation":
-            _sqlite.update_thread_title(thread_id, content[:50])
+    if thread_id:
         _reset_inactivity_timer(thread_id)
 
     # Command routing
@@ -355,7 +392,7 @@ async def on_message(message: cl.Message) -> None:
 
     # Normal query
     strategy_override = cl.user_session.get("strategy_override") or "auto"
-    stream, results, _ = await _engine.aquery_stream(message.content, strategy_override=strategy_override)
+    stream, results, _ = await _engine.aquery_stream(message.content, strategy_override=strategy_override, thread_id=thread_id)
 
     msg = cl.Message(content="")
     full_response = ""
@@ -365,26 +402,11 @@ async def on_message(message: cl.Message) -> None:
         await msg.stream_token(token)
 
     if results:
-        # Append footnote block with source citations
-        footnotes = _build_footnotes(results)
+        cited_indices = {int(m) for m in re.findall(r'\[(\d+)\]', full_response)}
+        footnotes = _build_footnotes(results, cited_indices or None, sqlite=_sqlite)
         if footnotes:
             full_response += footnotes
             await msg.stream_token(footnotes)
-
-        sources = []
-        seen_paths: set[str] = set()
-        for r in results:
-            if r.source_path not in seen_paths:
-                seen_paths.add(r.source_path)
-                source_text = r.parent_text or r.text
-                sources.append(
-                    cl.Text(
-                        name=Path(r.source_path).name,
-                        content=source_text,
-                        display="side",
-                    )
-                )
-        msg.elements = sources
 
     # Add "Save Finding" action if we have results
     if results and not full_response.startswith("⚠️"):
@@ -401,10 +423,6 @@ async def on_message(message: cl.Message) -> None:
         msg.actions = actions
 
     await msg.update()
-
-    # Persist assistant response to thread
-    if thread_id and _sqlite:
-        _sqlite.add_thread_message(str(uuid.uuid4()), thread_id, "assistant", full_response)
 
 
 @cl.action_callback("save_finding")
@@ -432,8 +450,27 @@ async def on_save_finding(action: cl.Action) -> None:
     await cl.Message(content=f"💾 Finding saved: {compressed}").send()
 
 
+@cl.on_chat_end
+async def on_chat_end() -> None:
+    thread_id = cl.user_session.get("thread_id")
+    if thread_id and _pipeline:
+        await asyncio.to_thread(_pipeline.delete_thread_documents, thread_id)
+        if thread_id in _inactivity_tasks:
+            _inactivity_tasks[thread_id].cancel()
+            del _inactivity_tasks[thread_id]
+
+
 @cl.on_stop
 def on_stop() -> None:
     if _watcher:
         _watcher.stop()
+
+
+@cl.action_callback("promote_to_kb")
+async def on_promote_to_kb(action: cl.Action) -> None:
+    document_id = action.payload.get("document_id")
+    original_name = action.payload.get("original_name", "document")
+    if document_id and _pipeline:
+        await asyncio.to_thread(_pipeline.promote_to_global, document_id)
+        await cl.Message(content=f"📚 **{original_name}** added to knowledge base.").send()
 

@@ -8,14 +8,26 @@ class HybridStrategy(BaseStrategy):
         self._embedder = embedder
         self._sparse_embedder = sparse_embedder
 
-    def retrieve(self, query: str, top_k: int = 20) -> list[RetrievalResult]:
+    def retrieve(self, query: str, top_k: int = 20, thread_id: str | None = None) -> list[RetrievalResult]:
         query_embedding = self._embedder.embed_query(query)
 
         sparse_vector = None
         if self._sparse_embedder:
             sparse_vector = self._sparse_embedder.embed_query_sparse(query)
 
-        hits = self._qdrant.search_rrf(query_embedding, top_k, sparse_vector=sparse_vector)
+        if thread_id is not None:
+            hits = self._qdrant.search_rrf_with_fallback(
+                query_embedding=query_embedding,
+                top_k=top_k,
+                thread_id=thread_id,
+                sparse_vector=sparse_vector,
+            )
+        else:
+            hits = self._qdrant.search_rrf(
+                query_embedding=query_embedding,
+                top_k=top_k,
+                sparse_vector=sparse_vector,
+            )
 
         retrieval_results = []
         seen_parents = set()

@@ -10,6 +10,7 @@ class RetrievalResult:
     source_path: str
     document_type: str
     parent_text: str | None = None
+    document_id: str | None = None
 
 
 class BaseStrategy(ABC):

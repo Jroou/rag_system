@@ -6,6 +6,18 @@ from src.retrieval.reranker import Reranker
 from src.routing.router import Router
 
 
+def _dedup_by_document(results: list[RetrievalResult]) -> list[RetrievalResult]:
+    """Keep only the highest-ranked chunk per document, preserving rerank order."""
+    seen: set[str] = set()
+    out = []
+    for r in results:
+        key = r.document_id or r.source_path
+        if key not in seen:
+            seen.add(key)
+            out.append(r)
+    return out
+
+
 class RAGEngine:
     def __init__(
         self,
@@ -28,6 +40,7 @@ class RAGEngine:
 
         if results:
             results = self._reranker.rerank(user_query, results, top_n=self._rerank_top_n)
+            results = _dedup_by_document(results)
 
         if not results:
             return "No relevant documents found.", [], strategy_name
@@ -54,6 +67,7 @@ class RAGEngine:
 
         if results:
             results = self._reranker.rerank(user_query, results, top_n=self._rerank_top_n)
+            results = _dedup_by_document(results)
 
         if not results:
 

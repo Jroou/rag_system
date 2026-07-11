@@ -44,6 +44,7 @@ class SemanticStrategy(BaseStrategy):
                     source_path=metadata.get("source_path", ""),
                     document_type=metadata.get("document_type", ""),
                     parent_text=parent_text,
+                    document_id=metadata.get("document_id"),
                 )
             )
 

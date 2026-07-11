@@ -133,12 +133,12 @@ def get_data_layer() -> SQLiteDataLayer:
 # Auto-authenticate as a local user so Chainlit enables the thread history panel.
 # Without an authenticated user the sidebar stays hidden regardless of data layer.
 @cl.header_auth_callback
-def header_auth_callback(headers: dict) -> cl.User | None:
+async def header_auth_callback(headers) -> cl.User | None:
     return cl.User(identifier="local", metadata={})
 
 
 @cl.on_chat_resume
-async def on_chat_resume(thread: dict) -> None:
+async def on_chat_resume(thread: cl.types.ThreadDict) -> None:
     """Restore user session state when a user clicks a past thread in the sidebar."""
     _initialize()
     assert _config is not None

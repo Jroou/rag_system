@@ -1,63 +1,67 @@
-knowledge_base:
-  monitored_folder: "./data"
-  supported_extensions:
-    - ".pdf"
-    - ".md"
-    - ".py"
-    - ".js"
-    - ".ts"
-    - ".doc"
-    - ".docx"
-
-embedding:
-  model_name: "multilingual-e5-large"
-  device: "cpu"
-
-reranker:
-  model_name: "BAAI/bge-reranker-v2-m3"
-  device: "cpu"
-  top_n: 7
-
-retrieval:
-  top_k: 30
-  default_strategy: "semantic"
-
 chunking:
-  parent_chunk_size: 1000
   child_chunk_size: 200
   chunk_overlap: 50
-
-storage:
-  qdrant_path: "./qdrant_data"
-  sqlite_path: "./rag_system.db"
-  collection_name: "knowledge_base"
-
+  parent_chunk_size: 1000
+embedding:
+  device: cpu
+  model_name: multilingual-e5-large
+knowledge_base:
+  monitored_folder: ./data
+  supported_extensions:
+  - .pdf
+  - .md
+  - .py
+  - .js
+  - .ts
+  - .doc
+  - .docx
 llm:
-  active_profile: "bedrock"
+  active_profile: bedrock
   profiles:
-    bedrock:
-      provider: "bedrock"
-      model: "eu.anthropic.claude-opus-4-6-v1"
-      temperature: 0.1
-      region: "eu-north-1"
     anthropic-default:
-      provider: "anthropic"
-      model: "claude-sonnet-4-20250514"
+      api_key_env: ANTHROPIC_API_KEY
+      model: claude-sonnet-4-20250514
+      provider: anthropic
       temperature: 0.3
-      api_key_env: "ANTHROPIC_API_KEY"
+    bedrock:
+      model: eu.anthropic.claude-opus-4-6-v1
+      provider: bedrock
+      region: eu-north-1
+      temperature: 0.1
     openai-default:
-      provider: "openai"
-      model: "gpt-4o"
+      api_key_env: OPENAI_API_KEY
+      model: gpt-4o
+      provider: openai
       temperature: 0.3
-      api_key_env: "OPENAI_API_KEY"
+reranker:
+  device: cpu
+  model_name: BAAI/bge-reranker-v2-m3
+  top_n: 7
+retrieval:
+  default_strategy: semantic
+  top_k: 30
+storage:
+  collection_name: knowledge_base
+  qdrant_path: ./qdrant_data
+  sqlite_path: ./rag_system.db
+system_prompt: 'You are a helpful assistant that answers questions based ONLY on the
+  provided context.
 
-inactivity_timeout: 30
-
-system_prompt: |
-  You are a helpful assistant that answers questions based ONLY on the provided context.
   Never add information, inferences, or claims not directly stated in the context.
+
   Always cite your sources using inline numbered references like [1], [2].
-  If the context doesn't contain enough information to answer, say so clearly.
-  Respond in the same language as the user's question.
-  Be thorough: cover all relevant details, facts, and terminology found in the context that relate to the question. Do not omit key information for brevity. Synthesize information across all provided sources to give the most complete answer possible.
-  Structure your response with clear markdown: use ## headings for major sections, bullet lists for enumerations, and **bold** for key terms. Keep headings short (3-5 words) and specific to the content below. Avoid filler phrases like "Based on the provided context" — start directly with the answer.
+
+  If the context doesn''t contain enough information to answer, say so clearly.
+
+  Respond in the same language as the user''s question.
+
+  Be thorough: cover all relevant details, facts, and terminology found in the context
+  that relate to the question. Do not omit key information for brevity. Synthesize
+  information across all provided sources to give the most complete answer possible.
+
+  Structure your response with clear markdown: use ## headings for major sections,
+  bullet lists for enumerations, and **bold** for key terms. Keep headings short (3-5
+  words) and specific to the content below. Avoid filler phrases like "Based on the
+  provided context" — start directly with the answer.
+
+  '

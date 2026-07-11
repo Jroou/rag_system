@@ -186,21 +186,34 @@ class SQLiteDataLayer(BaseDataLayer):
 
     @queue_until_user_message()
     async def update_step(self, step_dict: "StepDict") -> None:
+        # Streaming messages call update_step without a prior create_step, so upsert.
+        thread_id = step_dict.get("threadId", "")
+        await self.update_thread(thread_id)
         self._store._conn.execute(
-            """UPDATE steps SET
-               name = ?, input = ?, output = ?, end = ?
-               WHERE id = ?""",
+            """INSERT INTO steps
+               (id, thread_id, type, name, input, output, metadata, created_at, start, end, parent_id)
+               VALUES (?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+                 name = excluded.name,
+                 input = excluded.input,
+                 output = excluded.output,
+                 end = excluded.end""",
             (
+                step_dict.get("id", ""),
+                thread_id,
+                step_dict.get("type", ""),
                 step_dict.get("name", ""),
                 step_dict.get("input", ""),
                 step_dict.get("output", ""),
+                step_dict.get("createdAt") or _now(),
+                step_dict.get("start"),
                 step_dict.get("end"),
-                step_dict.get("id", ""),
+                step_dict.get("parentId"),
             ),
         )
         self._store._conn.commit()
 
-        # Update mirrored message for assistant steps
+        # Mirror assistant message to thread_messages for RAG history
         step_type = step_dict.get("type", "")
         if step_type == "assistant_message":
             content = step_dict.get("output", "")
@@ -214,7 +227,9 @@ class SQLiteDataLayer(BaseDataLayer):
                         "UPDATE thread_messages SET content = ? WHERE id = ?",
                         (content, step_id),
                     )
-                    self._store._conn.commit()
+                else:
+                    self._store.add_thread_message(step_id, thread_id, "assistant", content)
+                self._store._conn.commit()
 
     @queue_until_user_message()
     async def delete_step(self, step_id: str) -> None:

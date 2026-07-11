@@ -36,8 +36,6 @@ _embedder: Embedder | None = None
 _pipeline: IngestionPipeline | None = None
 _engine: RAGEngine | None = None
 _watcher: FileWatcher | None = None
-_inactivity_tasks: dict[str, asyncio.Task] = {}
-
 
 def _get_llm_from_profile(profile: dict[str, Any]) -> Any:
     return create_llm_from_profile(profile)
@@ -132,6 +130,25 @@ def get_data_layer() -> SQLiteDataLayer:
     return SQLiteDataLayer(_sqlite)
 
 
+# Auto-authenticate as a local user so Chainlit enables the thread history panel.
+# Without an authenticated user the sidebar stays hidden regardless of data layer.
+@cl.header_auth_callback
+def header_auth_callback(headers: dict) -> cl.User | None:
+    return cl.User(identifier="local", metadata={})
+
+
+@cl.on_chat_resume
+async def on_chat_resume(thread: dict) -> None:
+    """Restore user session state when a user clicks a past thread in the sidebar."""
+    _initialize()
+    assert _config is not None
+    thread_id = thread["id"]
+    cl.user_session.set("profiles", list(_config["llm"]["profiles"].keys()))
+    cl.user_session.set("active_profile", _config["llm"]["active_profile"])
+    cl.user_session.set("thread_id", thread_id)
+    cl.user_session.set("strategy_override", "auto")
+
+
 @cl.on_chat_start
 async def on_chat_start() -> None:
     _initialize()
@@ -155,15 +172,7 @@ async def on_chat_start() -> None:
                 label="System Prompt",
                 initial=_config.get("system_prompt", "You are a helpful assistant."),
             ),
-            cl.input_widget.Slider(
-                id="inactivity_timeout",
-                label="Inactivity Timeout (minutes)",
-                initial=_config.get("inactivity_timeout", 30),
-                min=1,
-                max=180,
-                step=1,
-            ),
-            cl.input_widget.Select(
+cl.input_widget.Select(
                 id="profile",
                 label="LLM Profile",
                 values=profiles,
@@ -257,12 +266,6 @@ async def on_settings_update(settings: dict[str, Any]) -> None:
         _engine.update_settings(rerank_top_n=int(rerank_top_n))
         changed.append(f"rerank top-N → {int(rerank_top_n)}")
 
-    # Inactivity timeout
-    timeout = settings.get("inactivity_timeout")
-    if timeout is not None:
-        _config["inactivity_timeout"] = int(timeout)
-        changed.append(f"inactivity timeout → {int(timeout)} min")
-
     # Strategy override
     strategy = settings.get("strategy_override")
     if strategy:
@@ -295,20 +298,6 @@ async def _summarize_thread(thread_id: str) -> None:
         summary = messages[0]["content"][:50] if messages else "Empty thread"
     _sqlite.update_thread_summary(thread_id, summary)
 
-
-async def _inactivity_watcher(thread_id: str) -> None:
-    assert _config is not None
-    timeout_minutes = _config.get("inactivity_timeout", 30)
-    await asyncio.sleep(timeout_minutes * 60)
-    await _summarize_thread(thread_id)
-    if _pipeline:
-        await asyncio.to_thread(_pipeline.delete_thread_documents, thread_id)
-
-
-def _reset_inactivity_timer(thread_id: str) -> None:
-    if thread_id in _inactivity_tasks:
-        _inactivity_tasks[thread_id].cancel()
-    _inactivity_tasks[thread_id] = asyncio.create_task(_inactivity_watcher(thread_id))
 
 
 def _readable_source_name(source_path: str, sqlite=None) -> str:
@@ -382,9 +371,6 @@ async def on_message(message: cl.Message) -> None:
 
     content = message.content.strip()
 
-    if thread_id:
-        _reset_inactivity_timer(thread_id)
-
     # Command routing
     dispatcher = CommandDispatcher(_engine, _pipeline, _config, _sqlite, _watcher)
     if await dispatcher.dispatch(content):
@@ -449,15 +435,6 @@ async def on_save_finding(action: cl.Action) -> None:
     _sqlite.add_finding(finding_id, compressed, json.dumps(citations))
     await cl.Message(content=f"💾 Finding saved: {compressed}").send()
 
-
-@cl.on_chat_end
-async def on_chat_end() -> None:
-    thread_id = cl.user_session.get("thread_id")
-    if thread_id and _pipeline:
-        await asyncio.to_thread(_pipeline.delete_thread_documents, thread_id)
-        if thread_id in _inactivity_tasks:
-            _inactivity_tasks[thread_id].cancel()
-            del _inactivity_tasks[thread_id]
 
 
 @cl.on_stop

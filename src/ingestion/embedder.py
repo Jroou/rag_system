@@ -14,3 +14,7 @@ class Embedder:
         prefixed = f"query: {query}"
         embedding = self._model.encode([prefixed], normalize_embeddings=True)
         return embedding[0].tolist()
+
+    @property
+    def vector_size(self) -> int:
+        return self._model.get_sentence_embedding_dimension()

@@ -12,14 +12,12 @@ from qdrant_client.models import (
     VectorParams,
 )
 
-DENSE_VECTOR_SIZE = 1024  # multilingual-e5-large
-
-
 class QdrantStore:
-    def __init__(self, path: str, collection_name: str):
+    def __init__(self, path: str, collection_name: str, vector_size: int = 1024):
         self._path = Path(path)
         self._path.mkdir(parents=True, exist_ok=True)
         self._collection_name = collection_name
+        self._vector_size = vector_size
         self._client = QdrantClient(path=str(self._path))
         self._ensure_collection()
 
@@ -30,7 +28,7 @@ class QdrantStore:
                 collection_name=self._collection_name,
                 vectors_config={
                     "dense": VectorParams(
-                        size=DENSE_VECTOR_SIZE,
+                        size=self._vector_size,
                         distance=Distance.COSINE,
                     ),
                 },

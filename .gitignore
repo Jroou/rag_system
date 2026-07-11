@@ -11,3 +11,5 @@ qdrant_data/
 .chainlit/translations/
 dist/
 *.egg-info/
+tests/eval/qdrant_eval_data/
+tests/eval/eval.db

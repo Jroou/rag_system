@@ -1,6 +1,5 @@
 import asyncio
 import json
-import os
 import uuid
 from pathlib import Path
 from typing import Any, List
@@ -12,6 +11,7 @@ load_dotenv()
 import chainlit as cl
 
 from src.core.config import load_config, save_config
+from src.core.llm_factory import create_llm, create_llm_from_profile
 from src.core.rag_engine import RAGEngine
 from src.generation.generator import Generator
 from src.ingestion.embedder import Embedder
@@ -37,38 +37,11 @@ _inactivity_tasks: dict[str, asyncio.Task] = {}
 
 
 def _get_llm_from_profile(profile: dict[str, Any]) -> Any:
-    provider = profile["provider"]
-    model = profile["model"]
-    temperature = profile.get("temperature", 0.3)
-    api_key_env = profile.get("api_key_env", "")
-    api_key = os.environ.get(api_key_env, "") if api_key_env else ""
-
-    if provider == "anthropic":
-        from langchain_anthropic import ChatAnthropic
-
-        return ChatAnthropic(
-            model=model, temperature=temperature, anthropic_api_key=api_key  # type: ignore[call-arg]
-        )
-    elif provider == "openai":
-        from langchain_openai import ChatOpenAI
-
-        return ChatOpenAI(model=model, temperature=temperature, openai_api_key=api_key)  # type: ignore[call-arg]
-    elif provider == "bedrock":
-        from langchain_aws import ChatBedrockConverse
-
-        return ChatBedrockConverse(
-            model_id=model,  # type: ignore[call-arg]
-            temperature=temperature,
-            region_name=profile.get("region", "us-east-1"),
-        )
-    else:
-        raise ValueError(f"Unknown LLM provider: {provider}")
+    return create_llm_from_profile(profile)
 
 
 def _get_llm(config: dict[str, Any]) -> Any:
-    profile_name = config["llm"]["active_profile"]
-    profile = config["llm"]["profiles"][profile_name]
-    return _get_llm_from_profile(profile)
+    return create_llm(config)
 
 
 def _build_strategies(qdrant: QdrantStore, embedder: Embedder, llm: Any) -> dict[str, Any]:

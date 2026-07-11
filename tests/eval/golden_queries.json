@@ -1,0 +1,227 @@
+[
+  {
+    "id": "q01",
+    "query": "What Monte Carlo algorithm is used for radiative transfer in protoplanetary disk simulations?",
+    "domain": "physics/astrophysics",
+    "expected_sources": ["physics/astrophysics/2607.08026v1.pdf"],
+    "key_facts": ["RADMC-3D", "Monte Carlo", "radiative transfer", "Hill sphere"],
+    "strategy_hint": "semantic",
+    "difficulty": "factual"
+  },
+  {
+    "id": "q02",
+    "query": "How does TESS detect exoplanet candidates from light curve data?",
+    "domain": "physics/astrophysics",
+    "expected_sources": ["physics/astrophysics/2607.08132v1.pdf"],
+    "key_facts": ["TESS", "lightcurves", "transit", "LATTE"],
+    "strategy_hint": "semantic",
+    "difficulty": "factual"
+  },
+  {
+    "id": "q03",
+    "query": "What is the LATTE package used for in exoplanet research?",
+    "domain": "physics/astrophysics",
+    "expected_sources": ["physics/astrophysics/2607.08132v1.pdf"],
+    "key_facts": ["LATTE", "Python", "TESS", "diagnostic tests", "lightcurves"],
+    "strategy_hint": "semantic",
+    "difficulty": "factual"
+  },
+  {
+    "id": "q04",
+    "query": "What experimental techniques are discussed for atomic physics measurements?",
+    "domain": "physics/atomicphysics",
+    "expected_sources": ["physics/atomicphysics/2607.08211v1.pdf", "physics/atomicphysics/2607.08220v1.pdf"],
+    "key_facts": ["atomic", "measurement", "spectroscopy"],
+    "strategy_hint": "hybrid",
+    "difficulty": "broad"
+  },
+  {
+    "id": "q05",
+    "query": "Explain Nietzsche's concept of master morality versus slave morality",
+    "domain": "philosophy",
+    "expected_sources": ["phylosophy/Beyond Good and Evil - Friedrich Nietzsche.pdf"],
+    "key_facts": ["master morality", "slave morality", "rulers", "noble", "order of rank"],
+    "strategy_hint": "hyde",
+    "difficulty": "conceptual"
+  },
+  {
+    "id": "q06",
+    "query": "What does Nietzsche say about the 'historical sense' as a virtue?",
+    "domain": "philosophy",
+    "expected_sources": ["phylosophy/Beyond Good and Evil - Friedrich Nietzsche.pdf"],
+    "key_facts": ["historical sense", "unpretentious", "selfless", "modest", "brave"],
+    "strategy_hint": "semantic",
+    "difficulty": "factual"
+  },
+  {
+    "id": "q07",
+    "query": "How does Nietzsche relate happiness to the philosopher's waking life versus dreams?",
+    "domain": "philosophy",
+    "expected_sources": ["phylosophy/Beyond Good and Evil - Friedrich Nietzsche.pdf"],
+    "key_facts": ["happiness", "dream", "waking hours", "colour", "definition"],
+    "strategy_hint": "hyde",
+    "difficulty": "conceptual"
+  },
+  {
+    "id": "q08",
+    "query": "What is DATGR and what are its baseline configurations?",
+    "domain": "ai",
+    "expected_sources": ["ai/2607.08490v1.pdf"],
+    "key_facts": ["DATGR", "static graph baseline", "fixed edges", "eta", "0.2"],
+    "strategy_hint": "semantic",
+    "difficulty": "factual"
+  },
+  {
+    "id": "q09",
+    "query": "How does memory-augmented architecture help in long-horizon agent tasks?",
+    "domain": "ai",
+    "expected_sources": ["ai/2607.08716v1.pdf"],
+    "key_facts": ["memory", "persistent", "action agent", "execution state", "long-horizon"],
+    "strategy_hint": "hyde",
+    "difficulty": "conceptual"
+  },
+  {
+    "id": "q10",
+    "query": "What is Mem0 and how does it compare to other memory mechanisms for AI agents?",
+    "domain": "ai",
+    "expected_sources": ["ai/2607.08716v1.pdf"],
+    "key_facts": ["Mem0", "persistent memory layer", "ADD interface", "retrieval"],
+    "strategy_hint": "semantic",
+    "difficulty": "factual"
+  },
+  {
+    "id": "q11",
+    "query": "How are Shapley values used in economic clustering analysis?",
+    "domain": "economics",
+    "expected_sources": ["economics/2505.23842v5.pdf"],
+    "key_facts": ["Shapley values", "marginal contributions", "permutations", "cluster"],
+    "strategy_hint": "semantic",
+    "difficulty": "factual"
+  },
+  {
+    "id": "q12",
+    "query": "What approach is used for document summarization with lightweight LLM calls?",
+    "domain": "economics",
+    "expected_sources": ["economics/2505.23842v5.pdf"],
+    "key_facts": ["summarization", "LLM calls", "one per document", "extraction", "preprocessing"],
+    "strategy_hint": "semantic",
+    "difficulty": "factual"
+  },
+  {
+    "id": "q13",
+    "query": "How is crowdsourced last-mile delivery optimized?",
+    "domain": "economics",
+    "expected_sources": ["economics/2607.08610v1.pdf"],
+    "key_facts": ["parcel allocation", "crowd routing", "crowdsourced", "last-mile delivery", "joint optimization"],
+    "strategy_hint": "semantic",
+    "difficulty": "factual"
+  },
+  {
+    "id": "q14",
+    "query": "What is the philosophical difference between risk-taking and timidity in morality?",
+    "domain": "philosophy",
+    "expected_sources": ["phylosophy/Beyond Good and Evil - Friedrich Nietzsche.pdf"],
+    "key_facts": ["risk", "Morality as Timidity", "owls", "drunkards"],
+    "strategy_hint": "step-back",
+    "difficulty": "conceptual"
+  },
+  {
+    "id": "q15",
+    "query": "Compare memory retrieval mechanisms in AI agent systems with how knowledge bases work",
+    "domain": "ai",
+    "expected_sources": ["ai/2607.08716v1.pdf", "ai/2607.08748v1.pdf"],
+    "key_facts": ["memory", "retrieval", "agent", "knowledge"],
+    "strategy_hint": "step-back",
+    "difficulty": "cross-domain"
+  },
+  {
+    "id": "q16",
+    "query": "What interactive tool use scenarios are studied in AI agent research?",
+    "domain": "ai",
+    "expected_sources": ["ai/2607.08716v1.pdf"],
+    "key_facts": ["interactive", "tool use", "domain-specific rules", "observations"],
+    "strategy_hint": "semantic",
+    "difficulty": "factual"
+  },
+  {
+    "id": "q17",
+    "query": "How do protoplanetary disk models handle the density distribution within the Hill sphere?",
+    "domain": "physics/astrophysics",
+    "expected_sources": ["physics/astrophysics/2607.08026v1.pdf"],
+    "key_facts": ["density", "Hill sphere", "envelope", "disk density", "maximum"],
+    "strategy_hint": "semantic",
+    "difficulty": "factual"
+  },
+  {
+    "id": "q18",
+    "query": "What is the relationship between freedom, subtlety, and boldness in thinking according to Nietzsche?",
+    "domain": "philosophy",
+    "expected_sources": ["phylosophy/Beyond Good and Evil - Friedrich Nietzsche.pdf"],
+    "key_facts": ["freedom", "subtlety", "boldness", "dance", "masterly certainty", "thinking", "ruling", "speaking"],
+    "strategy_hint": "hyde",
+    "difficulty": "conceptual"
+  },
+  {
+    "id": "q19",
+    "query": "How are LLM-based summarization and Shapley value attribution combined in document analysis?",
+    "domain": "economics",
+    "expected_sources": ["economics/2505.23842v5.pdf"],
+    "key_facts": ["LLM", "summarization", "Shapley", "document", "attribution"],
+    "strategy_hint": "step-back",
+    "difficulty": "conceptual"
+  },
+  {
+    "id": "q20",
+    "query": "What does Nietzsche think about peoples and fatherlands?",
+    "domain": "philosophy",
+    "expected_sources": ["phylosophy/Beyond Good and Evil - Friedrich Nietzsche.pdf"],
+    "key_facts": ["Peoples and Fatherlands", "Part Eight"],
+    "strategy_hint": "semantic",
+    "difficulty": "factual"
+  },
+  {
+    "id": "q21",
+    "query": "What optimization methods are applied to transportation and routing problems in economics?",
+    "domain": "economics",
+    "expected_sources": ["economics/2607.08610v1.pdf"],
+    "key_facts": ["optimization", "routing", "transportation", "delivery"],
+    "strategy_hint": "hybrid",
+    "difficulty": "broad"
+  },
+  {
+    "id": "q22",
+    "query": "How do dynamic graph structures differ from static graphs in AI agent coordination?",
+    "domain": "ai",
+    "expected_sources": ["ai/2607.08490v1.pdf"],
+    "key_facts": ["dynamic", "static graph", "DATGR", "edges", "baseline"],
+    "strategy_hint": "hyde",
+    "difficulty": "conceptual"
+  },
+  {
+    "id": "q23",
+    "query": "What is the role of qualitative analysis in understanding memory interventions for AI agents?",
+    "domain": "ai",
+    "expected_sources": ["ai/2607.08716v1.pdf"],
+    "key_facts": ["qualitative analysis", "memory interventions", "reactivate", "execution state", "action agent"],
+    "strategy_hint": "semantic",
+    "difficulty": "factual"
+  },
+  {
+    "id": "q24",
+    "query": "How can insights from philosophical concepts of will and power inform the design of autonomous AI agents?",
+    "domain": "cross-domain",
+    "expected_sources": ["phylosophy/Beyond Good and Evil - Friedrich Nietzsche.pdf", "ai/2607.08716v1.pdf"],
+    "key_facts": ["will", "power", "autonomous", "agent"],
+    "strategy_hint": "step-back",
+    "difficulty": "cross-domain"
+  },
+  {
+    "id": "q25",
+    "query": "What are the main challenges in crowdsourced delivery systems according to recent research?",
+    "domain": "economics",
+    "expected_sources": ["economics/2607.08610v1.pdf"],
+    "key_facts": ["crowdsourced", "delivery", "challenges", "last-mile"],
+    "strategy_hint": "hybrid",
+    "difficulty": "broad"
+  }
+]

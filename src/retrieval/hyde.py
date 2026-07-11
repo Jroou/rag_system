@@ -40,7 +40,7 @@ class HyDEStrategy(BaseStrategy):
 
             if parent_chunk_id and parent_chunk_id not in seen_parents:
                 seen_parents.add(parent_chunk_id)
-                parent_text = self._resolve_parent_text(parent_chunk_id)
+                parent_text = self._qdrant.fetch_parent(parent_chunk_id)
 
             results.append(
                 RetrievalResult(
@@ -59,25 +59,3 @@ class HyDEStrategy(BaseStrategy):
         prompt = HYDE_PROMPT.format(query=query)
         response = self._llm.invoke([{"role": "user", "content": prompt}])
         return response.content
-
-    def _resolve_parent_text(self, parent_chunk_id: str) -> str | None:
-        from qdrant_client.models import FieldCondition, Filter, MatchValue
-
-        try:
-            points = self._qdrant._client.scroll(
-                collection_name=self._qdrant._collection_name,
-                scroll_filter=Filter(
-                    must=[
-                        FieldCondition(key="chunk_type", match=MatchValue(value="parent")),
-                    ]
-                ),
-                limit=100,
-                with_payload=True,
-                with_vectors=False,
-            )[0]
-            for point in points:
-                if str(point.id) == parent_chunk_id:
-                    return point.payload.get("text")
-        except Exception:
-            pass
-        return None

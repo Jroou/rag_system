@@ -49,16 +49,13 @@ def setup():
     sqlite = SQLiteStore(db_path=str(sqlite_path))
     embedder = MockEmbedder()
 
-    config = {
-        "chunking": {
-            "parent_chunk_size": 500,
-            "child_chunk_size": 150,
-            "chunk_overlap": 30,
-        }
-    }
-
     pipeline = IngestionPipeline(
-        qdrant_store=qdrant, sqlite_store=sqlite, embedder=embedder, config=config
+        qdrant_store=qdrant,
+        sqlite_store=sqlite,
+        embedder=embedder,
+        parent_chunk_size=500,
+        child_chunk_size=150,
+        chunk_overlap=30,
     )
     pipeline.ingest(FIXTURES / "sample.md")
     pipeline.ingest(FIXTURES / "sample.py")
@@ -151,7 +148,13 @@ class TestRAGEngine:
             content="The system uses modular architecture."
         )
         generator = Generator(llm=mock_llm, system_prompt="You are a helper.")
-        router = Router(strategies={"semantic": strategy})
+        all_strategies = {
+            "semantic": strategy,
+            "hybrid": strategy,
+            "hyde": strategy,
+            "stepback": strategy,
+        }
+        router = Router(strategies=all_strategies)
         reranker = MockReranker()
         engine = RAGEngine(router=router, reranker=reranker, generator=generator, top_k=5)
 
@@ -166,7 +169,13 @@ class TestRAGEngine:
         mock_llm = MagicMock()
         mock_llm.invoke.return_value = MagicMock(content="Answer 1")
         generator = Generator(llm=mock_llm, system_prompt="Helper")
-        router = Router(strategies={"semantic": strategy})
+        all_strategies = {
+            "semantic": strategy,
+            "hybrid": strategy,
+            "hyde": strategy,
+            "stepback": strategy,
+        }
+        router = Router(strategies=all_strategies)
         reranker = MockReranker()
         engine = RAGEngine(router=router, reranker=reranker, generator=generator, top_k=5)
 

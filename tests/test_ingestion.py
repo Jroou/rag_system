@@ -7,7 +7,9 @@ import pytest
 from src.ingestion.chunkers import chunk_code, chunk_markdown
 from src.ingestion.loaders import detect_document_type, load_code, load_markdown
 from src.ingestion.pipeline import IngestionPipeline
-from src.storage.qdrant_store import DENSE_VECTOR_SIZE, QdrantStore
+from src.storage.qdrant_store import QdrantStore
+
+_TEST_VECTOR_SIZE = 1024
 from src.storage.sqlite_store import SQLiteStore
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -23,7 +25,7 @@ class MockEmbedder:
         for t in texts:
             h = hashlib.md5(t.encode()).digest()
             vec = [b / 255.0 for b in h]
-            vec = (vec * (DENSE_VECTOR_SIZE // len(vec) + 1))[:DENSE_VECTOR_SIZE]
+            vec = (vec * (_TEST_VECTOR_SIZE // len(vec) + 1))[:_TEST_VECTOR_SIZE]
             results.append(vec)
         return results
 
@@ -39,7 +41,7 @@ def pipeline():
         shutil.rmtree(qdrant_path)
     sqlite_path.unlink(missing_ok=True)
 
-    qdrant = QdrantStore(path=str(qdrant_path), collection_name="test_ingestion")
+    qdrant = QdrantStore(path=str(qdrant_path), collection_name="test_ingestion", vector_size=_TEST_VECTOR_SIZE)
     sqlite = SQLiteStore(db_path=str(sqlite_path))
     embedder = MockEmbedder()
 

@@ -13,3 +13,4 @@ dist/
 *.egg-info/
 tests/eval/qdrant_eval_data/
 tests/eval/eval.db
+.files/

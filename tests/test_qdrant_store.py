@@ -110,6 +110,124 @@ def test_delete_by_document_id(store: QdrantStore):
     assert store.count() == 0
 
 
+def test_fetch_parent_found(store: QdrantStore):
+    parent_id = str(uuid.uuid4())
+    child_id = str(uuid.uuid4())
+    parent_emb = _make_embedding(60)
+    child_emb = _make_embedding(61)
+
+    store.add(
+        ids=[parent_id, child_id],
+        embeddings=[parent_emb, child_emb],
+        metadatas=[
+            {
+                "document_id": "doc-fetch",
+                "chunk_type": "parent",
+                "text": "This is the parent text.",
+                "source_path": "/doc.md",
+            },
+            {
+                "document_id": "doc-fetch",
+                "chunk_type": "child",
+                "parent_chunk_id": parent_id,
+                "text": "Child text.",
+                "source_path": "/doc.md",
+            },
+        ],
+    )
+
+    result = store.fetch_parent(parent_id)
+    assert result == "This is the parent text."
+
+
+def test_fetch_parent_not_found(store: QdrantStore):
+    # No data — should return None without raising
+    result = store.fetch_parent("nonexistent-id")
+    assert result is None
+
+
+def test_fetch_parent_wrong_chunk_type(store: QdrantStore):
+    # Only child chunk exists, fetch_parent should not return it
+    child_id = str(uuid.uuid4())
+    store.add(
+        ids=[child_id],
+        embeddings=[_make_embedding(62)],
+        metadatas=[
+            {
+                "document_id": "doc-x",
+                "chunk_type": "child",
+                "text": "Child only.",
+                "source_path": "/x.md",
+            }
+        ],
+    )
+    result = store.fetch_parent(child_id)
+    assert result is None
+
+
+def test_search_rrf_returns_only_children(store: QdrantStore):
+    parent_id = str(uuid.uuid4())
+    child_id = str(uuid.uuid4())
+    query_emb = _make_embedding(70)
+
+    store.add(
+        ids=[parent_id, child_id],
+        embeddings=[_make_embedding(71), query_emb],
+        metadatas=[
+            {
+                "document_id": "doc-rrf",
+                "chunk_type": "parent",
+                "text": "Parent text.",
+                "source_path": "/doc.md",
+            },
+            {
+                "document_id": "doc-rrf",
+                "chunk_type": "child",
+                "parent_chunk_id": parent_id,
+                "text": "Child text.",
+                "source_path": "/doc.md",
+            },
+        ],
+    )
+
+    results = store.search_rrf(query_embedding=query_emb, top_k=10)
+    assert len(results) == 1
+    assert results[0]["metadata"]["chunk_type"] == "child"
+    assert "id" in results[0]
+    assert "score" in results[0]
+    assert "metadata" in results[0]
+
+
+def test_search_rrf_result_shape(store: QdrantStore):
+    child_id = str(uuid.uuid4())
+    emb = _make_embedding(80)
+
+    store.add(
+        ids=[child_id],
+        embeddings=[emb],
+        metadatas=[
+            {
+                "document_id": "doc-shape",
+                "chunk_type": "child",
+                "text": "Some child text.",
+                "source_path": "/shape.md",
+            }
+        ],
+    )
+
+    results = store.search_rrf(query_embedding=emb, top_k=5)
+    assert len(results) >= 1
+    hit = results[0]
+    assert set(hit.keys()) == {"id", "score", "metadata"}
+    assert isinstance(hit["score"], float)
+    assert isinstance(hit["metadata"], dict)
+
+
+def test_search_rrf_empty_store(store: QdrantStore):
+    results = store.search_rrf(query_embedding=_make_embedding(99), top_k=5)
+    assert results == []
+
+
 def test_persistence(tmp_path: Path):
     path = str(tmp_path / "qdrant_persist")
     s = QdrantStore(path=path, collection_name="persist_test")

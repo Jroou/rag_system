@@ -5,8 +5,10 @@ from qdrant_client.models import (
     Distance,
     FieldCondition,
     Filter,
+    FusionQuery,
     MatchValue,
     PointStruct,
+    Prefetch,
     SparseVector,
     SparseVectorParams,
     VectorParams,
@@ -82,6 +84,75 @@ class QdrantStore:
             using="dense",
             limit=top_k,
             query_filter=qdrant_filter,
+            with_payload=True,
+        )
+        return [
+            {"id": point.id, "score": point.score, "metadata": point.payload}
+            for point in results.points
+        ]
+
+    def fetch_parent(self, parent_chunk_id: str) -> str | None:
+        """Scroll Qdrant for a parent chunk by ID and return its text, or None if not found."""
+        try:
+            points, _ = self._client.scroll(
+                collection_name=self._collection_name,
+                scroll_filter=Filter(
+                    must=[
+                        FieldCondition(key="chunk_type", match=MatchValue(value="parent")),
+                    ]
+                ),
+                limit=100,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for point in points:
+                if str(point.id) == parent_chunk_id:
+                    return point.payload.get("text")
+        except Exception:
+            pass
+        return None
+
+    def search_rrf(
+        self,
+        query_embedding: list[float],
+        top_k: int,
+        sparse_vector: SparseVector | None = None,
+    ) -> list[dict]:
+        """Perform RRF fusion query using Qdrant's FusionQuery + Prefetch.
+
+        Filters to chunk_type='child' and returns results in the same shape as
+        search(): list of dicts with 'id', 'score', 'metadata' keys.
+        """
+        child_filter = Filter(
+            must=[
+                FieldCondition(key="chunk_type", match=MatchValue(value="child")),
+            ]
+        )
+
+        prefetch = [
+            Prefetch(
+                query=query_embedding,
+                using="dense",
+                limit=top_k * 2,
+                filter=child_filter,
+            ),
+        ]
+
+        if sparse_vector is not None:
+            prefetch.append(
+                Prefetch(
+                    query=sparse_vector,
+                    using="sparse",
+                    limit=top_k * 2,
+                    filter=child_filter,
+                )
+            )
+
+        results = self._client.query_points(
+            collection_name=self._collection_name,
+            prefetch=prefetch,
+            query=FusionQuery(fusion="rrf"),
+            limit=top_k,
             with_payload=True,
         )
         return [

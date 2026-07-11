@@ -25,6 +25,7 @@ from src.retrieval.stepback import StepBackStrategy
 from src.routing.router import Router
 from src.storage.qdrant_store import QdrantStore
 from src.storage.sqlite_store import SQLiteStore
+from src.ui.command_dispatcher import CommandDispatcher
 
 _config: dict[str, Any] | None = None
 _qdrant: QdrantStore | None = None
@@ -201,9 +202,10 @@ async def on_settings_update(settings: dict[str, Any]) -> None:
     system_prompt = settings.get("system_prompt")
     if system_prompt and system_prompt != _config.get("system_prompt"):
         _config["system_prompt"] = system_prompt
-        llm = _engine._generator._llm
-        generator = Generator(llm=llm, system_prompt=system_prompt)
-        _engine.update_generator(generator)
+        new_generator = Generator(
+            llm=create_llm(_config), system_prompt=system_prompt
+        )
+        _engine.update_settings(generator=new_generator)
         changed.append("system prompt")
 
     # LLM Profile
@@ -230,14 +232,14 @@ async def on_settings_update(settings: dict[str, Any]) -> None:
     top_k = settings.get("top_k")
     if top_k is not None:
         _config["retrieval"]["top_k"] = int(top_k)
-        _engine._top_k = int(top_k)
+        _engine.update_settings(top_k=int(top_k))
         changed.append(f"top-K → {int(top_k)}")
 
     # Rerank Top-N
     rerank_top_n = settings.get("rerank_top_n")
     if rerank_top_n is not None:
         _config.setdefault("reranker", {})["top_n"] = int(rerank_top_n)
-        _engine._rerank_top_n = int(rerank_top_n)
+        _engine.update_settings(rerank_top_n=int(rerank_top_n))
         changed.append(f"rerank top-N → {int(rerank_top_n)}")
 
     # Inactivity timeout
@@ -512,55 +514,8 @@ async def on_message(message: cl.Message) -> None:
         _reset_inactivity_timer(thread_id)
 
     # Command routing
-    if content.startswith("/profile "):
-        profile_name = content[len("/profile "):].strip()
-        if profile_name in _config["llm"]["profiles"]:
-            profile = _config["llm"]["profiles"][profile_name]
-            llm = _get_llm_from_profile(profile)
-            system_prompt = _config.get("system_prompt", "You are a helpful assistant.")
-            generator = Generator(llm=llm, system_prompt=system_prompt)
-            _engine.update_generator(generator)
-            await cl.Message(content=f"Switched to profile: **{profile_name}**").send()
-        else:
-            available = ", ".join(_config["llm"]["profiles"].keys())
-            await cl.Message(content=f"Unknown profile. Available: {available}").send()
-        return
-
-    if content == "/findings":
-        await _handle_findings_list()
-        return
-    if content.startswith("/finding delete "):
-        await _handle_delete_finding(content[len("/finding delete "):].strip())
-        return
-
-    if content == "/settings":
-        await _handle_settings_show()
-        return
-    if content.startswith("/settings set "):
-        parts = content[len("/settings set "):].strip().split(" ", 1)
-        if len(parts) == 2:
-            await _handle_settings_set(parts[0], parts[1])
-        else:
-            await cl.Message(content="Usage: `/settings set <key.path> <value>`").send()
-        return
-
-    if content == "/documents":
-        await _handle_documents_list()
-        return
-    if content.startswith("/reindex "):
-        await _handle_reindex(content[len("/reindex "):].strip())
-        return
-    if content.startswith("/doc delete "):
-        await _handle_doc_delete(content[len("/doc delete "):].strip())
-        return
-
-    if content == "/history":
-        await _handle_history()
-        return
-    if content == "/compress":
-        if thread_id:
-            await _summarize_thread(thread_id)
-            await cl.Message(content="Thread compressed.").send()
+    dispatcher = CommandDispatcher(_engine, _pipeline, _config, _sqlite, _watcher)
+    if await dispatcher.dispatch(content):
         return
 
     # Normal query
@@ -629,18 +584,13 @@ async def on_save_finding(action: cl.Action) -> None:
 
     citations = [{"source": r["source_path"], "text": r["text"]} for r in results_data]
 
-    try:
-        llm = _engine._generator._llm
-        compress_prompt = (
-            f"Compress the following answer into a single concise sentence "
-            f"that captures the key fact. Include source references in brackets.\n\n"
-            f"Answer: {response_text[:2000]}"
-        )
-        resp = await asyncio.to_thread(
-            llm.invoke, [{"role": "user", "content": compress_prompt}]
-        )
-        compressed = resp.content
-    except Exception:
+    compress_prompt = (
+        f"Compress the following answer into a single concise sentence "
+        f"that captures the key fact. Include source references in brackets.\n\n"
+        f"Answer: {response_text[:2000]}"
+    )
+    compressed = await asyncio.to_thread(_engine.complete, compress_prompt)
+    if not compressed:
         compressed = response_text[:200] + ("..." if len(response_text) > 200 else "")
 
     finding_id = str(uuid.uuid4())

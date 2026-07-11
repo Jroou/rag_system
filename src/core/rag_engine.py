@@ -71,14 +71,18 @@ class RAGEngine:
         except Exception:
             return self._fallback_stream(results), results, strategy_name
 
-        async def stream_with_first():
-            yield first_token
-            async for token in stream:
-                yield token
-
         self._chat_history.append({"role": "user", "content": user_query})
 
-        return stream_with_first(), results, strategy_name
+        async def stream_with_history():
+            accumulated = first_token
+            yield first_token
+            async for token in stream:
+                accumulated += token
+                yield token
+            self._chat_history.append({"role": "assistant", "content": accumulated})
+            self._trim_history()
+
+        return stream_with_history(), results, strategy_name
 
     def _fallback_stream(
         self, results: list[RetrievalResult]
@@ -90,10 +94,6 @@ class RAGEngine:
                 yield f"**[Source {i}: {r.source_path}]**\n{text}\n\n---\n\n"
 
         return _stream()
-
-    def record_response(self, response_text: str) -> None:
-        self._chat_history.append({"role": "assistant", "content": response_text})
-        self._trim_history()
 
     def update_generator(self, generator: Generator) -> None:
         self._generator = generator

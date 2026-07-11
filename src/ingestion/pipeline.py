@@ -1,7 +1,6 @@
 import uuid
 from pathlib import Path
 
-from src.core.config import load_config
 from src.ingestion.chunkers import (
     EXTENSION_TO_LANGUAGE,
     Chunk,
@@ -27,16 +26,17 @@ class IngestionPipeline:
         qdrant_store: QdrantStore,
         sqlite_store: SQLiteStore,
         embedder,
-        config: dict | None = None,
+        *,
+        parent_chunk_size: int = 1000,
+        child_chunk_size: int = 200,
+        chunk_overlap: int = 50,
     ):
         self._qdrant = qdrant_store
         self._sqlite = sqlite_store
         self._embedder = embedder
-        self._config = config or load_config()
-        chunking_cfg = self._config.get("chunking", {})
-        self._parent_chunk_size = chunking_cfg.get("parent_chunk_size", 1000)
-        self._child_chunk_size = chunking_cfg.get("child_chunk_size", 200)
-        self._chunk_overlap = chunking_cfg.get("chunk_overlap", 50)
+        self._parent_chunk_size = parent_chunk_size
+        self._child_chunk_size = child_chunk_size
+        self._chunk_overlap = chunk_overlap
 
     def ingest(self, file_path: Path, force: bool = False) -> str | None:
         file_path = Path(file_path).resolve()

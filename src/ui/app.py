@@ -75,11 +75,14 @@ def _initialize() -> None:
         model_name=f"intfloat/{_config['embedding']['model_name']}",
         device=_config["embedding"]["device"],
     )
+    chunking_cfg = _config.get("chunking", {})
     _pipeline = IngestionPipeline(
         qdrant_store=_qdrant,
         sqlite_store=_sqlite,
         embedder=_embedder,
-        config=_config,
+        parent_chunk_size=chunking_cfg.get("parent_chunk_size", 1000),
+        child_chunk_size=chunking_cfg.get("child_chunk_size", 200),
+        chunk_overlap=chunking_cfg.get("chunk_overlap", 50),
     )
 
     llm = _get_llm(_config)

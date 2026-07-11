@@ -201,9 +201,8 @@ async def on_settings_update(settings: dict[str, Any]) -> None:
     system_prompt = settings.get("system_prompt")
     if system_prompt and system_prompt != _config.get("system_prompt"):
         _config["system_prompt"] = system_prompt
-        llm = _engine._generator._llm
-        generator = Generator(llm=llm, system_prompt=system_prompt)
-        _engine.update_generator(generator)
+        generator = Generator(llm=_engine._generator._llm, system_prompt=system_prompt)
+        _engine.update_settings(generator=generator)
         changed.append("system prompt")
 
     # LLM Profile
@@ -230,14 +229,14 @@ async def on_settings_update(settings: dict[str, Any]) -> None:
     top_k = settings.get("top_k")
     if top_k is not None:
         _config["retrieval"]["top_k"] = int(top_k)
-        _engine._top_k = int(top_k)
+        _engine.update_settings(top_k=int(top_k))
         changed.append(f"top-K → {int(top_k)}")
 
     # Rerank Top-N
     rerank_top_n = settings.get("rerank_top_n")
     if rerank_top_n is not None:
         _config.setdefault("reranker", {})["top_n"] = int(rerank_top_n)
-        _engine._rerank_top_n = int(rerank_top_n)
+        _engine.update_settings(rerank_top_n=int(rerank_top_n))
         changed.append(f"rerank top-N → {int(rerank_top_n)}")
 
     # Inactivity timeout
@@ -265,17 +264,12 @@ async def _handle_save_finding(response_text: str, results: list) -> None:
     for r in results:
         citations.append({"source": r.source_path, "text": (r.parent_text or r.text)[:200]})
 
-    try:
-        llm = _engine._generator._llm
-        compress_prompt = (
-            f"Compress the following answer into a single concise sentence "
-            f"that captures the key fact. Include source references in brackets.\n\n"
-            f"Answer: {response_text[:2000]}"
-        )
-        resp = llm.invoke([{"role": "user", "content": compress_prompt}])
-        compressed = resp.content
-    except Exception:
-        compressed = response_text[:200] + ("..." if len(response_text) > 200 else "")
+    compress_prompt = (
+        f"Compress the following answer into a single concise sentence "
+        f"that captures the key fact. Include source references in brackets.\n\n"
+        f"Answer: {response_text[:2000]}"
+    )
+    compressed = _engine.complete(compress_prompt) or response_text[:200] + ("..." if len(response_text) > 200 else "")
 
     finding_id = str(uuid.uuid4())
     _sqlite.add_finding(finding_id, compressed, json.dumps(citations))
@@ -347,9 +341,8 @@ async def _handle_settings_set(key_path: str, value: str) -> None:
         _watcher.start()
 
     if key_path == "system_prompt" and _engine:
-        llm = _engine._generator._llm
-        generator = Generator(llm=llm, system_prompt=parsed_value)
-        _engine.update_generator(generator)
+        generator = Generator(llm=_engine._generator._llm, system_prompt=parsed_value)
+        _engine.update_settings(generator=generator)
 
     await cl.Message(content=f"Setting `{key_path}` updated.").send()
 
@@ -430,20 +423,14 @@ async def _summarize_thread(thread_id: str) -> None:
         f"{m['role']}: {m['content'][:300]}" for m in messages[:20]
     )
 
-    try:
-        llm = _engine._generator._llm
-        prompt = (
-            "Summarize this conversation in 1-2 concise sentences capturing the key topics discussed:\n\n"
-            f"{conversation}"
-        )
-        resp = await asyncio.to_thread(
-            llm.invoke, [{"role": "user", "content": prompt}]
-        )
-        summary = resp.content if isinstance(resp.content, str) else str(resp.content)
-        _sqlite.update_thread_summary(thread_id, summary)
-    except Exception:
-        first_msg = messages[0]["content"][:50] if messages else "Empty thread"
-        _sqlite.update_thread_summary(thread_id, first_msg)
+    prompt = (
+        "Summarize this conversation in 1-2 concise sentences capturing the key topics discussed:\n\n"
+        f"{conversation}"
+    )
+    summary = await asyncio.to_thread(_engine.complete, prompt)
+    if not summary:
+        summary = messages[0]["content"][:50] if messages else "Empty thread"
+    _sqlite.update_thread_summary(thread_id, summary)
 
 
 async def _inactivity_watcher(thread_id: str) -> None:
@@ -629,18 +616,13 @@ async def on_save_finding(action: cl.Action) -> None:
 
     citations = [{"source": r["source_path"], "text": r["text"]} for r in results_data]
 
-    try:
-        llm = _engine._generator._llm
-        compress_prompt = (
-            f"Compress the following answer into a single concise sentence "
-            f"that captures the key fact. Include source references in brackets.\n\n"
-            f"Answer: {response_text[:2000]}"
-        )
-        resp = await asyncio.to_thread(
-            llm.invoke, [{"role": "user", "content": compress_prompt}]
-        )
-        compressed = resp.content
-    except Exception:
+    compress_prompt = (
+        f"Compress the following answer into a single concise sentence "
+        f"that captures the key fact. Include source references in brackets.\n\n"
+        f"Answer: {response_text[:2000]}"
+    )
+    compressed = await asyncio.to_thread(_engine.complete, compress_prompt)
+    if not compressed:
         compressed = response_text[:200] + ("..." if len(response_text) > 200 else "")
 
     finding_id = str(uuid.uuid4())

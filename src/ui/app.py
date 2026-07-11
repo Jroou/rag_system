@@ -611,7 +611,6 @@ async def on_message(message: cl.Message) -> None:
         msg.actions = actions
 
     await msg.update()
-    _engine.record_response(full_response)
 
     # Persist assistant response to thread
     if thread_id and _sqlite:

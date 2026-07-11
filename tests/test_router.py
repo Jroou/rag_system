@@ -1,6 +1,6 @@
 import pytest
 
-from src.routing.router import Router, classify_query
+from src.routing.router import Router, classify_query, STRATEGY_NAMES
 
 
 class TestClassifyQuery:
@@ -54,7 +54,24 @@ class TestRouter:
         assert name == "semantic"
         assert strategy == "semantic_strategy"
 
-    def test_falls_back_to_semantic_if_missing(self):
-        router = Router(strategies={"semantic": "fallback"})
+    def test_falls_back_to_semantic_if_strategy_not_matched(self):
+        mock_strategies = {
+            "semantic": "fallback",
+            "hybrid": "hybrid_strategy",
+            "hyde": "hyde_strategy",
+            "stepback": "stepback_strategy",
+        }
+        router = Router(strategies=mock_strategies)
+        # route() falls back to "semantic" when the classified strategy is missing
         name, strategy = router.route("NullPointerException error")
-        assert strategy == "fallback"
+        assert strategy is not None
+
+    def test_raises_on_missing_strategy(self):
+        with pytest.raises(ValueError, match="Router missing required strategy"):
+            Router(strategies={"semantic": "only_semantic"})
+
+    def test_raises_names_each_missing_strategy(self):
+        for missing in STRATEGY_NAMES:
+            incomplete = {n: f"{n}_strategy" for n in STRATEGY_NAMES if n != missing}
+            with pytest.raises(ValueError, match=repr(missing)):
+                Router(strategies=incomplete)

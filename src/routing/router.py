@@ -1,4 +1,8 @@
 import re
+from typing import Literal, get_args
+
+StrategyName = Literal["semantic", "hybrid", "hyde", "stepback"]
+STRATEGY_NAMES: tuple[str, ...] = get_args(StrategyName)
 
 
 CONCEPTUAL_PATTERNS = re.compile(
@@ -41,6 +45,9 @@ def classify_query(query: str) -> str:
 
 class Router:
     def __init__(self, strategies: dict):
+        for name in STRATEGY_NAMES:
+            if name not in strategies:
+                raise ValueError(f"Router missing required strategy: {name!r}")
         self._strategies = strategies
 
     def route(self, query: str):

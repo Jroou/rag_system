@@ -22,7 +22,7 @@ from src.retrieval.hyde import HyDEStrategy
 from src.retrieval.reranker import Reranker
 from src.retrieval.semantic import SemanticStrategy
 from src.retrieval.stepback import StepBackStrategy
-from src.routing.router import Router
+from src.routing.router import Router, STRATEGY_NAMES
 from src.storage.qdrant_store import QdrantStore
 from src.storage.sqlite_store import SQLiteStore
 
@@ -178,7 +178,7 @@ async def on_chat_start() -> None:
             cl.input_widget.Select(
                 id="strategy_override",
                 label="Strategy Override",
-                values=["auto", "semantic", "hybrid", "hyde", "stepback"],
+                values=["auto", *STRATEGY_NAMES],
                 initial_value="auto",
             ),
     ]

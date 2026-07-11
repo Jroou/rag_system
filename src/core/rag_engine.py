@@ -95,6 +95,27 @@ class RAGEngine:
 
         return _stream()
 
+    def complete(self, prompt: str) -> str:
+        try:
+            response = self._generator._llm.invoke([{"role": "user", "content": prompt}])
+            return response.content
+        except Exception:
+            return ""
+
+    def update_settings(
+        self,
+        *,
+        top_k: int | None = None,
+        rerank_top_n: int | None = None,
+        generator: Generator | None = None,
+    ) -> None:
+        if top_k is not None:
+            self._top_k = top_k
+        if rerank_top_n is not None:
+            self._rerank_top_n = rerank_top_n
+        if generator is not None:
+            self._generator = generator
+
     def update_generator(self, generator: Generator) -> None:
         self._generator = generator
 

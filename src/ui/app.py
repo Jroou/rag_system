@@ -66,15 +66,16 @@ def _initialize() -> None:
     _config = load_config()
     storage_cfg = _config["storage"]
 
-    _qdrant = QdrantStore(
-        path=storage_cfg["qdrant_path"],
-        collection_name=storage_cfg["collection_name"],
-    )
-    _sqlite = SQLiteStore(db_path=storage_cfg["sqlite_path"])
     _embedder = Embedder(
         model_name=f"intfloat/{_config['embedding']['model_name']}",
         device=_config["embedding"]["device"],
     )
+    _qdrant = QdrantStore(
+        path=storage_cfg["qdrant_path"],
+        collection_name=storage_cfg["collection_name"],
+        vector_size=_embedder.vector_size,
+    )
+    _sqlite = SQLiteStore(db_path=storage_cfg["sqlite_path"])
     chunking_cfg = _config.get("chunking", {})
     _pipeline = IngestionPipeline(
         qdrant_store=_qdrant,

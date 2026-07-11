@@ -4,7 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from src.storage.qdrant_store import DENSE_VECTOR_SIZE, QdrantStore
+from src.storage.qdrant_store import QdrantStore
+
+_TEST_VECTOR_SIZE = 1024
 
 TEST_QDRANT_PATH = "/tmp/rag_system_test_qdrant"
 TEST_COLLECTION = "test_collection"
@@ -15,7 +17,7 @@ def store():
     path = Path(TEST_QDRANT_PATH)
     if path.exists():
         shutil.rmtree(path)
-    s = QdrantStore(path=TEST_QDRANT_PATH, collection_name=TEST_COLLECTION)
+    s = QdrantStore(path=TEST_QDRANT_PATH, collection_name=TEST_COLLECTION, vector_size=_TEST_VECTOR_SIZE)
     yield s
     s.close()
     shutil.rmtree(path, ignore_errors=True)
@@ -25,14 +27,14 @@ def _random_embedding() -> list[float]:
     import random
 
     random.seed(42)
-    return [random.random() for _ in range(DENSE_VECTOR_SIZE)]
+    return [random.random() for _ in range(_TEST_VECTOR_SIZE)]
 
 
 def _make_embedding(seed: int) -> list[float]:
     import random
 
     rng = random.Random(seed)
-    return [rng.random() for _ in range(DENSE_VECTOR_SIZE)]
+    return [rng.random() for _ in range(_TEST_VECTOR_SIZE)]
 
 
 def test_add_and_search(store: QdrantStore):
@@ -230,7 +232,7 @@ def test_search_rrf_empty_store(store: QdrantStore):
 
 def test_persistence(tmp_path: Path):
     path = str(tmp_path / "qdrant_persist")
-    s = QdrantStore(path=path, collection_name="persist_test")
+    s = QdrantStore(path=path, collection_name="persist_test", vector_size=_TEST_VECTOR_SIZE)
     emb = _make_embedding(50)
     chunk_id = str(uuid.uuid4())
     s.add(
@@ -240,7 +242,7 @@ def test_persistence(tmp_path: Path):
     )
     s.close()
 
-    s2 = QdrantStore(path=path, collection_name="persist_test")
+    s2 = QdrantStore(path=path, collection_name="persist_test", vector_size=_TEST_VECTOR_SIZE)
     assert s2.count() == 1
     results = s2.search(query_embedding=emb, top_k=5)
     assert results[0]["metadata"]["document_id"] == "persist-doc"

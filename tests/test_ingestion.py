@@ -43,19 +43,13 @@ def pipeline():
     sqlite = SQLiteStore(db_path=str(sqlite_path))
     embedder = MockEmbedder()
 
-    config = {
-        "chunking": {
-            "parent_chunk_size": 500,
-            "child_chunk_size": 150,
-            "chunk_overlap": 30,
-        }
-    }
-
     pipe = IngestionPipeline(
         qdrant_store=qdrant,
         sqlite_store=sqlite,
         embedder=embedder,
-        config=config,
+        parent_chunk_size=500,
+        child_chunk_size=150,
+        chunk_overlap=30,
     )
     yield pipe, qdrant, sqlite
 

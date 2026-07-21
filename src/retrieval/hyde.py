@@ -16,11 +16,11 @@ class HyDEStrategy(BaseStrategy):
         self._llm = llm
         self._fallback = SemanticStrategy(qdrant_store=qdrant_store, embedder=embedder)
 
-    def retrieve(self, query: str, top_k: int = 20, thread_id: str | None = None) -> list[RetrievalResult]:
+    def retrieve(self, query: str, top_k: int = 20, thread_id: str | None = None, document_ids: list[str] | None = None) -> list[RetrievalResult]:
         try:
             hypothetical_answer = self._generate_hypothesis(query)
         except Exception:
-            return self._fallback.retrieve(query, top_k, thread_id=thread_id)
+            return self._fallback.retrieve(query, top_k, thread_id=thread_id, document_ids=document_ids)
 
         hyp_embedding = self._embedder.embed_query(hypothetical_answer)
 
@@ -30,12 +30,14 @@ class HyDEStrategy(BaseStrategy):
                 top_k=top_k,
                 thread_id=thread_id,
                 filter_conditions={"chunk_type": "child"},
+                document_ids=document_ids,
             )
         else:
             child_results = self._qdrant.search(
                 query_embedding=hyp_embedding,
                 top_k=top_k,
                 filter_conditions={"chunk_type": "child"},
+                document_ids=document_ids,
             )
 
         results = []

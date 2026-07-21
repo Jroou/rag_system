@@ -8,7 +8,7 @@ class HybridStrategy(BaseStrategy):
         self._embedder = embedder
         self._sparse_embedder = sparse_embedder
 
-    def retrieve(self, query: str, top_k: int = 20, thread_id: str | None = None) -> list[RetrievalResult]:
+    def retrieve(self, query: str, top_k: int = 20, thread_id: str | None = None, document_ids: list[str] | None = None) -> list[RetrievalResult]:
         query_embedding = self._embedder.embed_query(query)
 
         sparse_vector = None
@@ -21,12 +21,14 @@ class HybridStrategy(BaseStrategy):
                 top_k=top_k,
                 thread_id=thread_id,
                 sparse_vector=sparse_vector,
+                document_ids=document_ids,
             )
         else:
             hits = self._qdrant.search_rrf(
                 query_embedding=query_embedding,
                 top_k=top_k,
                 sparse_vector=sparse_vector,
+                document_ids=document_ids,
             )
 
         retrieval_results = []

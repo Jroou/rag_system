@@ -7,7 +7,7 @@ class SemanticStrategy(BaseStrategy):
         self._qdrant = qdrant_store
         self._embedder = embedder
 
-    def retrieve(self, query: str, top_k: int = 20, thread_id: str | None = None) -> list[RetrievalResult]:
+    def retrieve(self, query: str, top_k: int = 20, thread_id: str | None = None, document_ids: list[str] | None = None) -> list[RetrievalResult]:
         query_embedding = self._embedder.embed_query(query)
 
         if thread_id is not None:
@@ -16,12 +16,14 @@ class SemanticStrategy(BaseStrategy):
                 top_k=top_k,
                 thread_id=thread_id,
                 filter_conditions={"chunk_type": "child"},
+                document_ids=document_ids,
             )
         else:
             child_results = self._qdrant.search(
                 query_embedding=query_embedding,
                 top_k=top_k,
                 filter_conditions={"chunk_type": "child"},
+                document_ids=document_ids,
             )
 
         results = []

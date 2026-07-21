@@ -7,6 +7,7 @@ from qdrant_client.models import (
     Filter,
     FusionQuery,
     IsNullCondition,
+    MatchAny,
     MatchValue,
     PayloadField,
     PointStruct,
@@ -76,6 +77,7 @@ class QdrantStore:
         self,
         filter_conditions: dict | None = None,
         thread_id=_UNSET,
+        document_ids: list[str] | None = None,
     ) -> Filter | None:
         must = []
         if filter_conditions:
@@ -83,6 +85,8 @@ class QdrantStore:
                 must.append(FieldCondition(key=key, match=MatchValue(value=value)))
         if thread_id is not _UNSET:
             must.append(_thread_condition(thread_id))
+        if document_ids:
+            must.append(FieldCondition(key="document_id", match=MatchAny(any=document_ids)))
         return Filter(must=must) if must else None
 
     def search(
@@ -91,13 +95,14 @@ class QdrantStore:
         top_k: int = 20,
         filter_conditions: dict | None = None,
         thread_id=_UNSET,
+        document_ids: list[str] | None = None,
     ) -> list[dict]:
         results = self._client.query_points(
             collection_name=self._collection_name,
             query=query_embedding,
             using="dense",
             limit=top_k,
-            query_filter=self._make_filter(filter_conditions, thread_id),
+            query_filter=self._make_filter(filter_conditions, thread_id, document_ids),
             with_payload=True,
         )
         return [
@@ -112,6 +117,7 @@ class QdrantStore:
         thread_id: str,
         filter_conditions: dict | None = None,
         fallback_threshold: int = 2,
+        document_ids: list[str] | None = None,
     ) -> list[dict]:
         """Search thread-scoped docs first; fall back to global KB if results are sparse."""
         thread_results = self.search(
@@ -119,6 +125,7 @@ class QdrantStore:
             top_k=top_k,
             filter_conditions=filter_conditions,
             thread_id=thread_id,
+            document_ids=document_ids,
         )
         if len(thread_results) >= fallback_threshold:
             return thread_results
@@ -127,6 +134,7 @@ class QdrantStore:
             top_k=top_k,
             filter_conditions=filter_conditions,
             thread_id=None,
+            document_ids=document_ids,
         )
         seen = {r["id"] for r in thread_results}
         merged = thread_results + [r for r in global_results if r["id"] not in seen]
@@ -150,14 +158,53 @@ class QdrantStore:
             pass
         return None
 
+    def fetch_first_parent_chunks(self, document_ids: list[str]) -> dict[str, dict]:
+        """Return the first parent chunk for each document_id.
+
+        Returns {document_id: {"text": ..., "source_path": ...}}.
+        Picks the lexicographically-first chunk_id per document as a proxy
+        for document start (UUIDs are generated sequentially during ingestion).
+        """
+        if not document_ids:
+            return {}
+        try:
+            points, _ = self._client.scroll(
+                collection_name=self._collection_name,
+                scroll_filter=Filter(
+                    must=[
+                        FieldCondition(key="chunk_type", match=MatchValue(value="parent")),
+                        FieldCondition(key="document_id", match=MatchAny(any=document_ids)),
+                    ]
+                ),
+                limit=1000,
+                with_payload=True,
+                with_vectors=False,
+            )
+        except Exception:
+            return {}
+
+        first_by_doc: dict[str, tuple[str, dict]] = {}
+        for point in points:
+            doc_id = point.payload.get("document_id")
+            text = point.payload.get("text", "")
+            if not doc_id or not text:
+                continue
+            point_id = str(point.id)
+            entry = {"text": text, "source_path": point.payload.get("source_path", "")}
+            if doc_id not in first_by_doc or point_id < first_by_doc[doc_id][0]:
+                first_by_doc[doc_id] = (point_id, entry)
+
+        return {doc_id: entry for doc_id, (_, entry) in first_by_doc.items()}
+
     def search_rrf(
         self,
         query_embedding: list[float],
         top_k: int,
         sparse_vector: SparseVector | None = None,
         thread_id=_UNSET,
+        document_ids: list[str] | None = None,
     ) -> list[dict]:
-        child_filter = self._make_filter({"chunk_type": "child"}, thread_id)
+        child_filter = self._make_filter({"chunk_type": "child"}, thread_id, document_ids)
 
         prefetch = [
             Prefetch(query=query_embedding, using="dense", limit=top_k * 2, filter=child_filter),
@@ -186,6 +233,7 @@ class QdrantStore:
         thread_id: str,
         sparse_vector: SparseVector | None = None,
         fallback_threshold: int = 2,
+        document_ids: list[str] | None = None,
     ) -> list[dict]:
         """RRF search with thread-first, global-KB fallback."""
         thread_results = self.search_rrf(
@@ -193,6 +241,7 @@ class QdrantStore:
             top_k=top_k,
             sparse_vector=sparse_vector,
             thread_id=thread_id,
+            document_ids=document_ids,
         )
         if len(thread_results) >= fallback_threshold:
             return thread_results
@@ -201,6 +250,7 @@ class QdrantStore:
             top_k=top_k,
             sparse_vector=sparse_vector,
             thread_id=None,
+            document_ids=document_ids,
         )
         seen = {r["id"] for r in thread_results}
         merged = thread_results + [r for r in global_results if r["id"] not in seen]

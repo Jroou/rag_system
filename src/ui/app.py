@@ -79,6 +79,7 @@ def _initialize(config: dict) -> tuple[RAGEngine, SQLiteStore, IngestionPipeline
         generator=generator,
         top_k=config["retrieval"]["top_k"],
         rerank_top_n=reranker_cfg.get("top_n", 5),
+        qdrant_store=qdrant,
     )
 
     kb_cfg = config["knowledge_base"]
